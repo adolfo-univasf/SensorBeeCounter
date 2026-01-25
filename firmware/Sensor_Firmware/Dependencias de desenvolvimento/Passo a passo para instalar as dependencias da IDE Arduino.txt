@@ -1,0 +1,18 @@
+biblioteca IOXhop_FirebaseESP32-master encontrada no github: 
+
+https://github.com/ArtronShop/IOXhop_FirebaseESP32
+
+para instalar basta baixar o zip do link acima e na ide do arduino ir em Sketch > Includy library > add. zip
+
+
+**************************************************************************
+
+ArduinoJson
+
+Para instalar basta: 
+1 - Ir na IDE do Arduino em Sketch > Includy library > Manage Libraries 
+
+2 - procurar por "ArduinoJson by Benoit Blanchon"
+
+3 - Instale a Versão 5.13.5 (outra versão 6 causa conflito )  
+**************************************************************************

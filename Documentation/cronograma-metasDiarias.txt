@@ -1,0 +1,24 @@
+
+
+
+
+*****************************   06/01/2026   *****************************
+
+Resolver problema de leitura do modulo RTC             - Done
+
+Criar função para acumular entradas e saidas em buffer - Done
+
+Criar timer de 5min para armazenar /ou enviar 
+
+
+
+Adicionar caso na FSM em que a abelha retorna para a comeia(IDLE -> S3 -> S2 -> S3 -> IDLE) - Done
+
+Adicionar caso na FSM em que a abelha retorna para a campo(IDLE -> S1 -> S2 -> S1 -> IDLE)  - DONE
+
+Adicionar caso na FSM em que a abelha aciona 2 sensores ao mesmo tempo entrando (IDLE -> S3 -> (S3 e S2) -> (S2 e S1) -> S1 -> IDLE)
+Adicionar caso na FSM em que a abelha aciona 2 sensores ao mesmo tempo saindo
+
+
+
+Desenhar case 3d para sensor 3mm
