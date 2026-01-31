@@ -13,6 +13,12 @@ void BeginLittleFS(){
 
 }
 
+
+
+
+
+
+
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     Serial.printf("Listing directory: %s\r\n", dirname);
 
@@ -38,7 +44,9 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
             Serial.print("  FILE: ");
             Serial.print(file.name());
             Serial.print("\tSIZE: ");
-            Serial.println(file.size());
+
+            (file.size() < 1025)? Serial.print(file.size()) : Serial.print(file.size()/1024); // for menor que 1024 B imprime como bytes, se for maior imprime como Kbytes
+            (file.size() < 1025)? Serial.print(" B\n") : Serial.print(" KB\n");               // for menor que 1024 B imprime como bytes, se for maior imprime como Kbytes
         }
         file = root.openNextFile();
     }
@@ -230,7 +238,7 @@ text-align: left;
 
 h1 {
 font-size: 2.2rem;
-margin-bottom: 100px;
+margin-bottom: 50px;
 }
 
 h2 {
@@ -240,16 +248,21 @@ font-size: 1.4rem;
 margin-bottom: 15px;
 }
 
+div {
+  margin-left: 10px;
+}
+
 
 button {
 margin-left: 15px;
-margin-top: 20px;
+margin-top: 10px;
+margin-bottom: 20px;
 width: 100%;
-max-width: 300px;
+max-width: 250px;
 font-size: 1rem;
-padding: 16px;
+padding: 10px;
 border: none;
-border-radius: 10px;
+border-radius: 8px;
 background: #0066cc;
 color: #fff;
 }
@@ -267,15 +280,140 @@ color: #666;
 <body>
 <h1>Sensor BeeCounter</h1>
 <h2>Download arquivos:</h2>
-<button onclick="window.location.href='/download'">
-Baixar Dados.csv
-</button>
-<button onclick="window.location.href='/download'">
-Baixar Logs.csv
-</button>
+
+
+<div id="files">
+<!-- FILE_LIST -->
+</div>
+
+
 <footer>
 <b>Eng. Adolfo Castro</b>
 </footer>
 </body>
 </html>
 )rawliteral";
+
+
+
+
+const char PAGE_FILE_NOT_FOUND[] PROGMEM = R"rawliteral(
+
+  <!DOCTYPE html>
+  <html lang="pt-BR">
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <h1 style='font-size:2rem;text-align:center'>Arquivo não encontrado!</h1>
+
+)rawliteral";
+
+
+
+// *****************************************************************************************************************
+
+String formatarTamanho(size_t bytes) {
+  if (bytes < 1024) {
+    return String(bytes) + " B";
+  } else if (bytes < 1024 * 1024) {
+    return String(bytes / 1024.0, 2) + " KB";
+  } else {
+    return String(bytes / (1024.0 * 1024.0), 2) + " MB";
+  }
+}
+
+
+
+String gerarHTMLArquivos() {
+  //String html = "<!DOCTYPE html><html><body>";
+  
+  String html;
+
+  File root = LittleFS.open("/");
+  if (!root || !root.isDirectory()) {
+    html += "<p>Diretório nao encontrado.</p>";
+    return html;
+  }
+
+
+
+  File file = root.openNextFile();
+
+  Serial.println("\n****************************************************************");
+  Serial.print("root: ");
+  Serial.print(root);
+  Serial.print("\nfile: ");
+  Serial.print(file);
+  Serial.println("");
+  while (file) {
+    if (!file.isDirectory()) {
+      String nome = String(file.name());
+     
+      Serial.print("\nfile: ");
+      Serial.print(file);
+      Serial.print("\nnome: ");
+      Serial.print(nome);
+     
+
+      nome.replace("/", "");
+
+      size_t tamanho = file.size();
+
+      html += "<div class='file'>";
+      html += "<strong>" + nome +"</strong>  [";
+      html += formatarTamanho(tamanho) + "]<br>";
+      html += "<button onclick=\"window.location.href='/download?file=";
+      html += nome;
+      html += "'\">📥   Download</button>";
+      html += "</div>";
+    }
+    file = root.openNextFile();
+  }
+   Serial.println("\n****************************************************************");
+
+  //html += "</body></html>";
+  return html;
+}
+
+
+
+void handleFileDownload() 
+{
+
+  //File file = LittleFS.open("/mydir/Dados.csv", "r");
+  //File file = LittleFS.open("/teste.csv", "r");
+     
+  if (!server.hasArg("file")) {
+    server.send(400, "text/plain", "Arquivo não especificado");
+    return;
+  }
+
+
+  String fileName = server.arg("file"); // ex: Dados.csv
+  String filePath = "/" + fileName; // caminho real no FS
+  File file = LittleFS.open(filePath, "r");
+
+  if (!file) {
+    server.send(404, "text/html", PAGE_FILE_NOT_FOUND);
+    return;
+  }
+
+  server.setContentLength(file.size());
+  server.sendHeader("Content-Type", "application/octet-stream");
+
+  server.sendHeader(
+    "Content-Disposition",
+    "attachment; filename=\"" + fileName + "\""
+  );
+  server.sendHeader("Connection", "close");
+  server.send(200);
+
+  uint8_t buffer[512];
+  while (file.available()) 
+  {
+    size_t len = file.read(buffer, sizeof(buffer));
+    server.client().write(buffer, len);
+  }
+  file.close();
+}
+
+
+
