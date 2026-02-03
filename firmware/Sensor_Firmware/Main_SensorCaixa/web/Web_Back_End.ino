@@ -4,33 +4,15 @@
 extern const char* PARAM_STRING = "ID_Caixa";  //web
 extern const char index_html[] PROGMEM; // HTML web page
 
-
-
-
-
-
-
-
-
-
-
 //***************************   prototipo da função   ***************************
+
 void notFound(AsyncWebServerRequest *request);
-
-String readFile(fs::FS &fs, const char * path);
-
 void writeFile(fs::FS &fs, const char * path, const char * message);
-
+String readFile(fs::FS &fs, const char * path);
 String processor(const String& var);
-
 void Setup_Server(); 
 
-
-
-
 //***************************   funções   ***************************
-
-
 
 void notFound(AsyncWebServerRequest *request) {
   request->send(404, "text/plain", "Not found");
@@ -136,32 +118,26 @@ void Setup_Server(){
       inputMessage = request->getParam(PARAM_FLOAT)->value();
       writeFile(SPIFFS, "/inputFloat.txt", inputMessage.c_str());
     }*/
-
-
     else {
       inputMessage = "No message sent";
     }
-
     Serial.println(inputMessage);
     request->send(200, "text/text", inputMessage);
   });
   server.onNotFound(notFound);
   server.begin();
-
-
-
 }
 
 
 String GET_ID_CAIXA()
 {
+  /*
     // Initialize SPIFFS
   if(!SPIFFS.begin(true)){
     Serial.println("An Error has occurred while mounting SPIFFS");
   }
-
+  */
   return readFile(SPIFFS, "/ID_Caixa.txt");
-
 }
 
 

@@ -1,4 +1,3 @@
-
 void displaySetup()
 {
   Heltec.display->init();
@@ -20,9 +19,6 @@ void display_Enviando_Dados()
   Heltec.display->drawString(0, 33,  "dados ... ");
   Heltec.display->display();
 }
-
-
-
 
 void display_Dados()
 {
@@ -52,7 +48,7 @@ void display_WiFi_Failed(int cont)
   Heltec.display->drawString(20, 0, "ERRO  WIFI ");
   Heltec.display->setFont(ArialMT_Plain_10);
   Heltec.display->drawString(0, 18, "Tentando conectar a rede:");
-  Heltec.display->drawString(0, 32, ssid);
+  Heltec.display->drawString(0, 32, String(SSID));
   Heltec.display->drawString(0, 50, "Tentativas:");    
   Heltec.display->drawString(70, 50, String(cont));
   Heltec.display->display();

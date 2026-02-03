@@ -39,14 +39,6 @@ void setup()
     Serial.print(WiFi.localIP());
     Serial.println("\n");
 
-/*
-    // Página principal
-    server.on("/", HTTP_GET, []() {
-    //server.send(200, "text/html", PAGE_HTML);
-    server.send(200, "text/html", gerarHTMLArquivos());
-    });
-    */
-
     // Página principal
     server.on("/", HTTP_GET, []() {
     String page = PAGE_HTML;                 // copia do PROGMEM
@@ -54,12 +46,7 @@ void setup()
     server.send(200, "text/html", page);
     });
 
-
-
-
     server.on("/download", HTTP_GET, handleFileDownload);
-
-
 
     server.begin();
     Serial.println("Servidor HTTP iniciado");

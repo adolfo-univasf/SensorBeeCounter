@@ -1,9 +1,5 @@
 
-
-
-
-
-void sendPacket()   //função de envio quando a interrupção é chamada
+/*void sendPacket()   //função de envio quando a interrupção é chamada
 {
   LoRa.beginPacket();
   LoRa.print(IDcaixa);
@@ -15,10 +11,11 @@ void sendPacket()   //função de envio quando a interrupção é chamada
  // LoRa.print(currentMassa);
   LoRa.print('B');
   LoRa.print(currentBateria);
-
   LoRa.endPacket();
 
 }
+
+*/
 
 
 /*

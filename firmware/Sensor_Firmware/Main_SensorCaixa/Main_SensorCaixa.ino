@@ -1,17 +1,30 @@
+/*
+**********************   Para não ter erro de compilação   ********************** 
+
+Boards Manager:
+-> Esp32 by Espressif Versão 2.0.14
+
+Library:
+->Heltec ESP32 Dev-Boards by Heltec Automation Versão 1.1.1
+
+*/
+
 //*****************************   Libraries   *****************************
 
-#include "heltec.h"
 #include <EEPROM.h>
-//#include <SPIFFS.h>   // para gravar dados permanentes
 #include <LittleFS.h>   // para gravar dados permanentes "mais seguro do que o SPIFFS" em relação a corromper arquivos por falta de energia
-#include "Web_Front_End.h"
+#include "FS.h"
+#include <WebServer.h>
 #include <Arduino.h>
 #include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
 #include <time.h>
 #include <Wire.h>
 #include "RTClib.h"
+//#include "Web_Front_End.h"
+#include <AsyncTCP.h>
+//#include <ESPAsyncWebServer.h>
+
+#include "heltec.h"
 
 //*****************************   Defines   *****************************
 
@@ -21,10 +34,14 @@
 #define Pin_Sensor_DTH 17
 #define LED2 25
 #define calibrar false  // coloque true quando quiser calibrar
-#define ssid "JRTELECOMADOLFO" // Your WiFi SSID
-#define password "38632391"    // Your WiFi Password
 
-// Estados dos sensores (bitmask)
+//#define ssid "JRTELECOMADOLFO" // Your WiFi SSID
+//#define password "38632391"    // Your WiFi Password
+#define SSID "JRTELECOMADOLFO" // Your WiFi SSID
+#define PASSWORD "38632391"    // Your WiFi Password
+WebServer server(80);
+
+//*****************************   Estados dos sensores (bitmask)   *****************************
 #define WAIT        0b111  // repouso
 #define STATE_3     0b110  // S3 foi o primeiro sensor
 #define STATE_2     0b101  // S2 já aconteceu (independente do estado atual)
@@ -40,6 +57,18 @@ char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursd
 
 TwoWire I2C_RTC = TwoWire(1); // I2C secundário (isolado)
 
+//*****************************   Variaveis Externas   *****************************
+
+extern const char PAGE_HTML[] PROGMEM; // HTML web page
+extern const char PAGE_FILE_NOT_FOUND[] PROGMEM;
+//extern const char index_html[] PROGMEM;
+//extern String readFile(fs::FS &fs, const char * path);
+extern String processor(const String& var);
+//extern void notFound(AsyncWebServerRequest *request);
+extern void Setup_Server();
+//extern void setup_Balanca();
+//extern void writeFile(fs::FS &fs, const char * path, const char * message);
+extern const char* PARAM_STRING; // WEB
 
 
 //PINOUT
@@ -83,11 +112,8 @@ const unsigned long TIMEOUT_FSM = 5000; // 5 segundos
 
 String IDcaixa;  
 
-
-
-
 //******************************************************************
-extern const char* PARAM_STRING; // WEB
+
 const char* PARAM_INT   = "inputInt";
 const char* PARAM_FLOAT = "inputFloat";
 
@@ -96,69 +122,51 @@ const char* PARAM_FLOAT = "inputFloat";
 hw_timer_t * My_timer = NULL; // temporizador
 bool flag_tempo_envio = false;
 
-
-
 // Variables
 const int     calVal_eepromAdress = 0;
+
 uint8_t state_Sensors= 0;
 bool Flag_Sensors = false;
+bool State_button_WakeUp = true; // Button to ON Display
 
-// Button to ON Display
-bool State_button_WakeUp = true;
-unsigned long time_DisplayON= 0; // time the display is ON
 const unsigned long Time_Display = 15000; // 15s
+unsigned long time_DisplayON= 0; // time the display is ON
 
 unsigned long t = 0;
 unsigned long tempo_envio = 60; // em segundos
 
 String packet, ip_server ;
-
 float currentBateria;
 
-
-
-/* Protótipo da função */
-
+/*********************   Protótipos das funções **********************/
 void sendPacket();
 void IRAM_ATTR InterruptExternSensors();
-
 void processaFSM(uint8_t estado);
 void registraEvento(uint8_t ultimoEstadoFSM);
 void printEstadoSensores(uint8_t estado);
-
 unsigned int ReadtimeRTC();
 uint8_t ReadingSensors();
 void ReadButtonDisplay();
 float ReadBattery();
+void handleFileDownload();
+String formatarTamanho(size_t bytes);
 
-
+/*********************   Interrupção timer **********************/
 void IRAM_ATTR ativa_flag_envio()   //função de envio quando a interrupção é chamada
 {
   flag_tempo_envio = true;
 }
-
-AsyncWebServer server(80);
-
-
-extern const char index_html[] PROGMEM;
-extern void notFound(AsyncWebServerRequest *request);
-extern String readFile(fs::FS &fs, const char * path);
-extern void writeFile(fs::FS &fs, const char * path, const char * message);
-extern String processor(const String& var);
-extern void Setup_Server();
-extern void setup_Balanca();
+//AsyncWebServer server(80);
 
 /******************* função principal (setup) *********************/
 void setup()
 {
-  setCpuFrequencyMhz(80);  // 240Mhz = 140mA,   160Mhz = 119mA,  80Mhz = 105mA
+  setCpuFrequencyMhz(160);  // 240Mhz = 140mA,   160Mhz = 119mA,  80Mhz = 105mA
 
   pinMode(button_WakeUp,INPUT);
-  
   pinMode(S1,INPUT);
   pinMode(S2,INPUT);
   pinMode(S3,INPUT);
-
   pinMode(SaidaVext,OUTPUT);
   pinMode(botao_Configurar,INPUT);
 
@@ -170,18 +178,9 @@ void setup()
 
   //SCL -> GPIO22 
   //SDA -> GPIO21
-
-
-
-
   //Wire.begin(23, 17, 100000); // SDA, SCL, 100kHz
-
-
-
   //Wire.begin(4, 15);  // SDA, SCL  ← ESSENCIAL
   //Wire.setClock(100000); // 100 kHz (RECOMENDADO) Modulo DS3231 não trabalha bem com 400khz padrão
-
-
 
   delay(500);
   Serial.println("************************   Inicializando Display   ************************  ");
@@ -190,11 +189,7 @@ void setup()
   displaySetup();
   delay(500);
 
-
   Serial.begin(115200);  
-
-
-
   delay(500);
   
   Serial.flush();
@@ -247,43 +242,31 @@ void setup()
 
   if (rtc.lostPower()) {
     Serial.println("RTC lost power, let's set the time!");
-    // When time needs to be set on a new device, or after a power loss, the
-    // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(2026, 1, 5, 8, 32, 0));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2026 at 3am you would call:
-    //rtc.adjust(DateTime(2026, 1, 21, 3, 0, 0));
-    
-    // When time needs to be re-set on a previously configured device, the
-    // following line sets the RTC to the date & time this sketch was compiled
-    //rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2026 at 3am you would call:
-    //rtc.adjust(DateTime(2026, 1, 21, 3, 0, 0));
+    rtc.adjust(DateTime(2026, 1, 5, 8, 32, 0)); //     5/01/2026  8h:32 min
   }
+
   if (digitalRead(button_WakeUp) == HIGH)
   {
     rtc.adjust(DateTime(2026, 1, 5, 8, 32, 0));
     Serial.println(" RTC Setado");
   }
   
-
   Serial.flush();
-
-
-
-  Serial.flush();
+  /*
   Serial.println("************************   Inicializando SPIFFS  ************************  ");
   if (SPIFFS.begin(true)) {
     Serial.println("SPIFFS OK");
   }
 
+*/
 
+/*
   My_timer = timerBegin(1, 80, true); // ( numero do temporizador utilizado no esp tem de 0 a 3, prescaler, e o último é um sinalizador indicando se o contador deve contar para cima (verdadeiro) ou para baixo (falso) )
   timerAttachInterrupt(My_timer, &ativa_flag_envio, true);
   timerAlarmWrite(My_timer, tempo_envio*1000000, true); // 1000000 microssegundos = 1 segundo, Para o terceiro argumento, passaremos o valor true, assim o contador irá recarregar e assim a interrupção será gerada periodicamente.
   timerAlarmEnable(My_timer);
 
+*/
 
   /*
   if (digitalRead(botao_Configurar) == true)
@@ -309,6 +292,31 @@ void setup()
   }
   IDcaixa = GET_ID_CAIXA();
   */
+    BeginLittleFS();
+
+    Serial.println("\nConectando ao WiFi...");
+    WiFi.begin(SSID, PASSWORD);
+
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println("\nWiFi conectado!");
+    Serial.print("IP local do ESP32: ");
+    Serial.print(WiFi.localIP());
+    Serial.println("\n");
+
+    // Página principal
+    server.on("/", HTTP_GET, []() {
+    String page = PAGE_HTML;                 // copia do PROGMEM
+    page.replace("<!-- FILE_LIST -->", gerarHTMLArquivos());
+    server.send(200, "text/html", page);
+    });
+
+    server.on("/download", HTTP_GET, handleFileDownload);
+
+    server.begin();
+    Serial.println("Servidor HTTP iniciado");
 }
 
 // *****************************   Variables Global   *****************************
@@ -321,27 +329,24 @@ unsigned int EntradasBuffer = 0,
 
 void loop()
 {
-  if (Flag_Sensors == true)
-  {
+  if (Flag_Sensors == true){
     Flag_Sensors = false;
     state_Sensors = ReadingSensors();
     processaFSM(state_Sensors);
-
   }
- ReadButtonDisplay();
+ ReadButtonDisplay();// rotina para verificar se botão wake up foi pressionado 
+ server.handleClient();
 }
 
 // *********  Functions   *********
 
-void ReadButtonDisplay()
-{
-  
+void ReadButtonDisplay(){
   if (digitalRead(button_WakeUp) == HIGH)
   {
+
     State_button_WakeUp = true;
     time_DisplayON = millis();
     Heltec.display->displayOn();
-
     Serial.println("");
     Serial.print(" EntradasBuffer: ");
     Serial.print(EntradasBuffer);
@@ -355,16 +360,13 @@ void ReadButtonDisplay()
     Serial.print(" ReturnFieldBuffer: ");
     Serial.print(ReturnFieldBuffer);
     Serial.println("");
-
     Serial.print(ReadBattery());
     Serial.println("");
-
    /* tensao = analogRead(Adc_Battery);
     Serial.print(tensao);
     Serial.println("");
     delay(500);
     */
-
   }
 
   // desliga após 30 segundos
@@ -374,13 +376,11 @@ void ReadButtonDisplay()
   }
 }
 
-uint8_t ReadingSensors()
-{
+uint8_t ReadingSensors(){
   return(digitalRead(S1)<< 0) | (digitalRead(S2)<< 1) | (digitalRead(S3)<< 2);
 }
 
-unsigned int ReadtimeRTC()
-{
+unsigned int ReadtimeRTC(){
   // Retorna a data no formato timestamp Unix de  0 até 4.294.967.295 segundos
    digitalWrite(SaidaVext,LOW); 
    if (!rtc.begin(&I2C_RTC)){
@@ -393,8 +393,7 @@ unsigned int ReadtimeRTC()
    return now.unixtime();
 }
 
-void IRAM_ATTR InterruptExternSensors()
-{
+void IRAM_ATTR InterruptExternSensors(){
   Flag_Sensors = true;
 }
 
@@ -405,12 +404,8 @@ float ReadBattery(){
   unsigned int Ad[10];
   char cont = 0;
 
-
   Serial.println("| ");
-  
-
-  for(cont=0;cont<10;cont++)
-  {
+  for(cont=0;cont<10;cont++) {
     Ad[cont]= analogRead(Adc_Battery);
     Serial.print(Ad[cont]);
     Serial.print(" | ");
@@ -421,10 +416,7 @@ float ReadBattery(){
   Serial.print(mediana);
   Serial.println("");
   
-
-
   return mediana;
-
 }
 
 
