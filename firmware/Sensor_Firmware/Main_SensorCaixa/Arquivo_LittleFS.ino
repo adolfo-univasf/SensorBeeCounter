@@ -45,6 +45,25 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     }
 }
 
+
+float sizeFile(fs::FS &fs, const char * path){
+
+  File file = fs.open(path);
+  float FileSize = file.size();
+
+  Serial.print("  FILE: ");
+  Serial.print(file.name());
+  Serial.print("\tSIZE: ");
+  (file.size() < 1025)? Serial.print(file.size()) : Serial.print(file.size()/1024); // for menor que 1024 B imprime como bytes, se for maior imprime como Kbytes
+  (file.size() < 1025)? Serial.print(" B\n") : Serial.print(" KB\n");               // for menor que 1024 B imprime como bytes, se for maior imprime como Kbytes]
+  
+  file.close();
+  return (FileSize/1024.0);
+}
+
+
+
+
 void createDir(fs::FS &fs, const char * path){
     Serial.printf("Creating Dir: %s\n", path);
     if(fs.mkdir(path)){
@@ -65,7 +84,9 @@ void removeDir(fs::FS &fs, const char * path){
 
 void readFile(fs::FS &fs, const char * path){
     Serial.printf("Reading file: %s\r\n", path);
+    
 
+    
     File file = fs.open(path);
     if(!file || file.isDirectory()){
         Serial.println("- failed to open file for reading");
@@ -77,6 +98,21 @@ void readFile(fs::FS &fs, const char * path){
         Serial.write(file.read());
     }
     file.close();
+}
+
+
+
+
+
+bool FileExiste(fs::FS &fs, const char * path){
+  File file = fs.open(path);
+  if(!file){
+      Serial.println("\nO arquivo ainda não existe!");
+      return false;
+  }
+  Serial.println("\nO arquivo existe!");
+  file.close();
+  return true;
 }
 
 void writeFile(fs::FS &fs, const char * path, const char * message){
@@ -208,6 +244,9 @@ void testFileIO(fs::FS &fs, const char * path){
     }
 }
 
+volatile bool flagAtualizar = false;
+
+
 const char PAGE_HTML[] PROGMEM = R"rawliteral(
 
   <!DOCTYPE html>
@@ -243,7 +282,6 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
     margin-left: 10px;
   }
   
-  
   button {
   margin-left: 15px;
   margin-top: 10px;
@@ -258,7 +296,6 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   color: #fff;
   }
   
-  
   footer {
   margin-left: 5px;
   margin-top: 50px;
@@ -268,19 +305,34 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   </style>
   
   </head>
+
   <body>
+
   <h1>Sensor BeeCounter</h1>
+  <h2>Dados em tempo real:</h2>
+  <b>Contador:</b>
+  <span id="contador">0</span>
   <h2>Download arquivos:</h2>
-  
   
   <div id="files">
   <!-- FILE_LIST -->
   </div>
   
-  
   <footer>
   <b>Eng. Adolfo Castro</b>
   </footer>
+
+
+
+  <script>
+    const ws = new WebSocket(`ws://${location.host}/ws`); 
+    ws.onmessage = (event) => {
+    document.getElementById('contador').innerText = event.data;
+    };
+  </script>
+
+
+
   </body>
   </html>
 )rawliteral";
@@ -317,8 +369,6 @@ String gerarHTMLArquivos() {
     return html;
   }
 
-
-
   File file = root.openNextFile();
 
   Serial.println("\n****************************************************************");
@@ -330,17 +380,13 @@ String gerarHTMLArquivos() {
   while (file) {
     if (!file.isDirectory()) {
       String nome = String(file.name());
-     
+      size_t tamanho = file.size();
       Serial.print("\nfile: ");
       Serial.print(file);
       Serial.print("\nnome: ");
       Serial.print(nome);
-     
-
       nome.replace("/", "");
-
-      size_t tamanho = file.size();
-
+      
       html += "<div class='file'>";
       html += "<strong>" + nome +"</strong>  [";
       html += formatarTamanho(tamanho) + "]<br>";
@@ -359,7 +405,7 @@ String gerarHTMLArquivos() {
 
 void handleFileDownload() 
 {
-
+  uint8_t buffer[512];
   //File file = LittleFS.open("/mydir/Dados.csv", "r");
   //File file = LittleFS.open("/teste.csv", "r");
      
@@ -367,7 +413,6 @@ void handleFileDownload()
     server.send(400, "text/plain", "Arquivo não especificado");
     return;
   }
-
 
   String fileName = server.arg("file"); // ex: Dados.csv
   String filePath = "/" + fileName; // caminho real no FS
@@ -380,7 +425,6 @@ void handleFileDownload()
 
   server.setContentLength(file.size());
   server.sendHeader("Content-Type", "application/octet-stream");
-
   server.sendHeader(
     "Content-Disposition",
     "attachment; filename=\"" + fileName + "\""
@@ -388,7 +432,6 @@ void handleFileDownload()
   server.sendHeader("Connection", "close");
   server.send(200);
 
-  uint8_t buffer[512];
   while (file.available()) 
   {
     size_t len = file.read(buffer, sizeof(buffer));

@@ -70,6 +70,10 @@ void removeDir(fs::FS &fs, const char * path){
     }
 }
 
+
+
+
+
 void readFile(fs::FS &fs, const char * path){
     Serial.printf("Reading file: %s\r\n", path);
 

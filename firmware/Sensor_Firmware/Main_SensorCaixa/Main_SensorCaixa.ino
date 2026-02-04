@@ -24,6 +24,8 @@ Library:
 #include <AsyncTCP.h>
 //#include <ESPAsyncWebServer.h>
 
+
+
 #include "heltec.h"
 
 //*****************************   Defines   *****************************
@@ -119,8 +121,8 @@ const char* PARAM_FLOAT = "inputFloat";
 
 //******************************************************************
 
-hw_timer_t * My_timer = NULL; // temporizador
-bool flag_tempo_envio = false;
+hw_timer_t * Timer_SalvarDados = NULL; // temporizador
+volatile bool Flag_tempo_SalvarDados = false;
 
 // Variables
 const int     calVal_eepromAdress = 0;
@@ -132,8 +134,9 @@ bool State_button_WakeUp = true; // Button to ON Display
 const unsigned long Time_Display = 15000; // 15s
 unsigned long time_DisplayON= 0; // time the display is ON
 
+unsigned long TempoUltimoDadoSalvo = 0;
 unsigned long t = 0;
-unsigned long tempo_envio = 60; // em segundos
+unsigned long tempo_salvarDados = 60; // em segundos  Tempo em que o timer é configurado para armazenar os dados no arquivo csv
 
 String packet, ip_server ;
 float currentBateria;
@@ -150,11 +153,13 @@ void ReadButtonDisplay();
 float ReadBattery();
 void handleFileDownload();
 String formatarTamanho(size_t bytes);
+void SalvarDadosEmArquivo();
+void DeleteDadosAtuais();
 
 /*********************   Interrupção timer **********************/
-void IRAM_ATTR ativa_flag_envio()   //função de envio quando a interrupção é chamada
+void IRAM_ATTR Ativa_Flag_tempo_SalvarDados()   //função de envio quando a interrupção é chamada
 {
-  flag_tempo_envio = true;
+  Flag_tempo_SalvarDados = true;
 }
 //AsyncWebServer server(80);
 
@@ -170,9 +175,19 @@ void setup()
   pinMode(SaidaVext,OUTPUT);
   pinMode(botao_Configurar,INPUT);
 
+ //*********************   Interrupção externa para os 3 sensores   **********************
   attachInterrupt(S1, InterruptExternSensors, CHANGE);
   attachInterrupt(S2, InterruptExternSensors, CHANGE);
   attachInterrupt(S3, InterruptExternSensors, CHANGE);
+
+ //*********************   Timer para salvar dados no arquivo csv   **********************
+  Timer_SalvarDados = timerBegin(1, 80, true); // ( numero do temporizador utilizado no esp tem de 0 a 3, prescaler, e o último é um sinalizador indicando se o contador deve contar para cima (verdadeiro) ou para baixo (falso) )
+  timerAttachInterrupt(Timer_SalvarDados, &Ativa_Flag_tempo_SalvarDados, true);
+  timerAlarmWrite(Timer_SalvarDados, tempo_salvarDados*1000000, true); // 1000000 microssegundos = 1 segundo, Para o terceiro argumento, passaremos o valor true, assim o contador irá recarregar e assim a interrupção será gerada periodicamente.
+  timerAlarmEnable(Timer_SalvarDados);
+
+
+
 
   int cont =0;
 
@@ -258,15 +273,12 @@ void setup()
     Serial.println("SPIFFS OK");
   }
 
-*/
+ */
 
-/*
-  My_timer = timerBegin(1, 80, true); // ( numero do temporizador utilizado no esp tem de 0 a 3, prescaler, e o último é um sinalizador indicando se o contador deve contar para cima (verdadeiro) ou para baixo (falso) )
-  timerAttachInterrupt(My_timer, &ativa_flag_envio, true);
-  timerAlarmWrite(My_timer, tempo_envio*1000000, true); // 1000000 microssegundos = 1 segundo, Para o terceiro argumento, passaremos o valor true, assim o contador irá recarregar e assim a interrupção será gerada periodicamente.
-  timerAlarmEnable(My_timer);
 
-*/
+
+
+
 
   /*
   if (digitalRead(botao_Configurar) == true)
@@ -336,9 +348,99 @@ void loop()
   }
  ReadButtonDisplay();// rotina para verificar se botão wake up foi pressionado 
  server.handleClient();
+
+ if (Flag_tempo_SalvarDados == true){
+  Flag_tempo_SalvarDados = false;
+  SalvarDadosEmArquivo();
+ }
 }
 
 // *********  Functions   *********
+
+
+
+void SalvarDadosEmArquivo(){
+  int TamanhoMaximoArquivo = 2; // Tamanho maximo para o arquivo de dados, se passar disso será criado um backup e o arquivo dados será zerado 
+
+  String DadosAtuais,
+         Entradas,
+         Saidas,
+         ReturnHive,   // retorna para a colmeia
+         ReturnField;  // retorna para o campo
+
+  float TamanhoArquivo;
+
+  Serial.println("Temporizador de salvar dados no arquivo ativado\n");
+  Serial.print("Intervalo entre a ultimo armazenamento: ");
+  Serial.print((millis() - TempoUltimoDadoSalvo)/1000);
+  Serial.println(" segundos");
+  TempoUltimoDadoSalvo = millis();
+  listDir(LittleFS, "/", 1); // List the directories up to one level beginning at the root directory
+  // "Data, Entradas, Saidas, Bateria, Erros"
+  //appendFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n"); //Append some text to the previous file
+
+  DadosAtuais = String(ReadtimeRTC()); // Data
+  DadosAtuais +=  ",";
+  DadosAtuais += String(EntradasBuffer); // Entradas
+
+  DadosAtuais +=  ",";
+  DadosAtuais += String(SaidasBuffer); // Saidas
+
+  DadosAtuais +=  ",";
+  DadosAtuais += "12.5v"; // Bateria
+
+  DadosAtuais +=  ",";
+  DadosAtuais += "nenhum\r\n"; // Erros
+
+  //deleteFile(LittleFS, "/Backup_Dados1.csv");
+  //deleteFile(LittleFS, "/Dados1.csv");
+
+  if(!FileExiste(LittleFS, "/Dados.csv"))  // Se o arquivo Não existir, cria o arquivo e imprime o cabeçalho
+  { 
+    writeFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n");
+    appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str()); //Append some text to the previous file
+    DeleteDadosAtuais();
+  }else{
+  
+    TamanhoArquivo = sizeFile(LittleFS, "/Dados.csv");
+
+    if(TamanhoArquivo > TamanhoMaximoArquivo){ // Se o arquivo Dados for maior que 1MB, cria um backup e apaga o antigo backup
+     
+      Serial.print("\nO arquivo Dados é Maior que ");Serial.print(TamanhoMaximoArquivo);Serial.print(" kByte \n Tamanho Arquivo Dados: ");
+      Serial.print(TamanhoArquivo);
+      Serial.print(" kBytes\n");
+
+      if(!FileExiste(LittleFS, "/Backup_Dados.csv")){ // Se o backup não existir, o arquivo dados será transformado em backup
+      
+        renameFile(LittleFS, "/Dados.csv", "/Backup_Dados.csv"); 
+        writeFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n");
+        appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
+        DeleteDadosAtuais();
+      }else{ // Se o backup existir, o backup antigo será deletado e o arquivo dados será transformado em backup
+      
+        deleteFile(LittleFS, "/Backup_Dados.csv");
+        renameFile(LittleFS, "/Dados.csv", "/Backup_Dados.csv"); // Se o arquivo ficar maior que 1Mbyte será criado um backup (evitar ficar manipulando arquivos muito grandes)
+        writeFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n");
+        appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
+        DeleteDadosAtuais();
+      }
+
+    }else{
+      Serial.print("\nO arquivo Dados é Menor que ");Serial.print(TamanhoMaximoArquivo);Serial.print(" kByte \n Tamanho Arquivo Dados: ");
+      Serial.print(TamanhoArquivo);
+      Serial.print(" kBytes\n");
+      appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
+      DeleteDadosAtuais();
+    }
+  }
+}
+
+void DeleteDadosAtuais(){
+  EntradasBuffer = 0;
+  SaidasBuffer = 0;
+
+}
+
 
 void ReadButtonDisplay(){
   if (digitalRead(button_WakeUp) == HIGH)
