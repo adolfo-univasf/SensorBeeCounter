@@ -35,9 +35,10 @@ void WifiLoop() {
     }
   }
 
-  if (wifiLigado) {
+  /*if (wifiLigado) {
     server.handleClient();
   }
+  */
 
   if (wifiLigado && millis() - wifiStartTime > WIFI_TIMEOUT) {
     WiFi.softAPdisconnect(true);

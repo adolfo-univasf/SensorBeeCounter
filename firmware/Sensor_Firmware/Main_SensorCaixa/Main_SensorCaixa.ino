@@ -25,7 +25,7 @@ Library:
 //#include <ESPAsyncWebServer.h>
 
 
-
+#include <ESPAsyncWebServer.h>
 #include "heltec.h"
 
 //*****************************   Defines   *****************************
@@ -41,7 +41,11 @@ Library:
 //#define password "38632391"    // Your WiFi Password
 #define SSID "JRTELECOMADOLFO" // Your WiFi SSID
 #define PASSWORD "38632391"    // Your WiFi Password
-WebServer server(80);
+
+
+
+AsyncWebServer server(80);
+//WebServer server(80); // estatico
 
 //*****************************   Estados dos sensores (bitmask)   *****************************
 #define WAIT        0b111  // repouso
@@ -55,7 +59,7 @@ WebServer server(80);
 
 RTC_DS3231 rtc; // modulo rtc
 
-char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+//char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 
 TwoWire I2C_RTC = TwoWire(1); // I2C secundário (isolado)
 
@@ -136,7 +140,7 @@ unsigned long time_DisplayON= 0; // time the display is ON
 
 unsigned long TempoUltimoDadoSalvo = 0;
 unsigned long t = 0;
-unsigned long tempo_salvarDados = 60; // em segundos  Tempo em que o timer é configurado para armazenar os dados no arquivo csv
+unsigned long tempo_salvarDados = 30; // em segundos  Tempo em que o timer é configurado para armazenar os dados no arquivo csv
 
 String packet, ip_server ;
 float currentBateria;
@@ -147,14 +151,17 @@ void IRAM_ATTR InterruptExternSensors();
 void processaFSM(uint8_t estado);
 void registraEvento(uint8_t ultimoEstadoFSM);
 void printEstadoSensores(uint8_t estado);
-unsigned int ReadtimeRTC();
+String ReadtimeRTC(char tipo);
 uint8_t ReadingSensors();
 void ReadButtonDisplay();
-float ReadBattery();
-void handleFileDownload();
+String ReadBattery();
+void handleFileDownload(AsyncWebServerRequest *request);
 String formatarTamanho(size_t bytes);
 void SalvarDadosEmArquivo();
 void DeleteDadosAtuais();
+void UpdateWeb();
+String processor(const String& var);
+
 
 /*********************   Interrupção timer **********************/
 void IRAM_ATTR Ativa_Flag_tempo_SalvarDados()   //função de envio quando a interrupção é chamada
@@ -162,6 +169,16 @@ void IRAM_ATTR Ativa_Flag_tempo_SalvarDados()   //função de envio quando a int
   Flag_tempo_SalvarDados = true;
 }
 //AsyncWebServer server(80);
+
+
+// *****************************   Variables Global   *****************************
+
+unsigned int EntradasBuffer = 0,
+             SaidasBuffer = 0,
+             ReturnHiveBuffer = 0,   // retorna para a colmeia
+             ReturnFieldBuffer = 0;  // retorna para o campo
+
+String Bateria = "0.0";
 
 /******************* função principal (setup) *********************/
 void setup()
@@ -175,6 +192,10 @@ void setup()
   pinMode(SaidaVext,OUTPUT);
   pinMode(botao_Configurar,INPUT);
 
+
+  analogReadResolution(12); // Define a resolução (9-12 bits).
+  analogSetAttenuation(ADC_11db); // Define a faixa de tensão. 
+
  //*********************   Interrupção externa para os 3 sensores   **********************
   attachInterrupt(S1, InterruptExternSensors, CHANGE);
   attachInterrupt(S2, InterruptExternSensors, CHANGE);
@@ -186,16 +207,7 @@ void setup()
   timerAlarmWrite(Timer_SalvarDados, tempo_salvarDados*1000000, true); // 1000000 microssegundos = 1 segundo, Para o terceiro argumento, passaremos o valor true, assim o contador irá recarregar e assim a interrupção será gerada periodicamente.
   timerAlarmEnable(Timer_SalvarDados);
 
-
-
-
   int cont =0;
-
-  //SCL -> GPIO22 
-  //SDA -> GPIO21
-  //Wire.begin(23, 17, 100000); // SDA, SCL, 100kHz
-  //Wire.begin(4, 15);  // SDA, SCL  ← ESSENCIAL
-  //Wire.setClock(100000); // 100 kHz (RECOMENDADO) Modulo DS3231 não trabalha bem com 400khz padrão
 
   delay(500);
   Serial.println("************************   Inicializando Display   ************************  ");
@@ -208,17 +220,6 @@ void setup()
   delay(500);
   
   Serial.flush();
-  Serial.println("************************   Scan I2C   ************************   ");
-  for (byte addr = 1; addr < 127; addr++) 
-  {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0) 
-    {
-      Serial.print("Encontrado em 0x");
-      Serial.println(addr, HEX);
-    }
-    delay(10);
-  }
 
   // I2C do RTC isolado
   I2C_RTC.begin(13, 22, 100000); // SDA, SCL, 100kHz
@@ -245,8 +246,6 @@ void setup()
   if (!rtc.begin(&I2C_RTC)) 
   {
     Serial.println(" RTC nao encontrado ");
-
-
   } else {
     Serial.println(" RTC OK");
     DateTime now = rtc.now();
@@ -265,78 +264,53 @@ void setup()
     rtc.adjust(DateTime(2026, 1, 5, 8, 32, 0));
     Serial.println(" RTC Setado");
   }
-  
   Serial.flush();
-  /*
-  Serial.println("************************   Inicializando SPIFFS  ************************  ");
-  if (SPIFFS.begin(true)) {
-    Serial.println("SPIFFS OK");
-  }
 
- */
+  BeginLittleFS();
 
+  Serial.println("\nConectando ao WiFi...");
+  WiFi.begin(SSID, PASSWORD);
 
-
-
-
-
-  /*
-  if (digitalRead(botao_Configurar) == true)
-  {
-    display_Modo_Configuracao();
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-
-    while (WiFi.status() != WL_CONNECTED) {
-      display_WiFi_Failed(cont);
-      WiFi.begin(ssid, password);
-      cont++;
-      delay(3000);
-    }
-    display_Wifi_OK();
-    ip_server = WiFi.localIP().toString();
-    display_IPServidor();
-    Setup_Server();
-    while(true){
-      display_IPServidor();
-      Serial.println("\nModo Configuração ativado, para sair desligue a chave de configuração e reset a placa !\n");
-    }
-  }
-  IDcaixa = GET_ID_CAIXA();
-  */
-    BeginLittleFS();
-
-    Serial.println("\nConectando ao WiFi...");
-    WiFi.begin(SSID, PASSWORD);
-
-    while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) {
       delay(500);
       Serial.print(".");
-    }
-    Serial.println("\nWiFi conectado!");
-    Serial.print("IP local do ESP32: ");
-    Serial.print(WiFi.localIP());
-    Serial.println("\n");
+  }
+  Serial.println("\nWiFi conectado!");
+  Serial.print("IP local do ESP32: ");
+  Serial.print(WiFi.localIP());
+  Serial.println("\n");
 
     // Página principal
-    server.on("/", HTTP_GET, []() {
-    String page = PAGE_HTML;                 // copia do PROGMEM
+  
+  
+  UpdateWeb();
+/*
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    // Envia direto da PROGMEM e processa os marcadores
+    request->send_P(200, "text/html", PAGE_HTML, processor);
+  });
+
+  // Rota de download
+  server.on("/download", HTTP_GET, handleFileDownload);
+
+
+  server.begin();
+  */
+  Serial.println("Servidor HTTP iniciado");
+    //server.handleClient();
+
+    /*server.on("/", HTTP_GET, []() {
+                  // copia do PROGMEM
+
     page.replace("<!-- FILE_LIST -->", gerarHTMLArquivos());
+    page.replace("%BATERIA%", Bateria);
     server.send(200, "text/html", page);
     });
+*/
 
-    server.on("/download", HTTP_GET, handleFileDownload);
-
-    server.begin();
-    Serial.println("Servidor HTTP iniciado");
 }
 
-// *****************************   Variables Global   *****************************
-
-unsigned int EntradasBuffer = 0,
-             SaidasBuffer = 0,
-             ReturnHiveBuffer = 0,   // retorna para a colmeia
-             ReturnFieldBuffer = 0;  // retorna para o campo
 
 
 void loop()
@@ -347,7 +321,7 @@ void loop()
     processaFSM(state_Sensors);
   }
  ReadButtonDisplay();// rotina para verificar se botão wake up foi pressionado 
- server.handleClient();
+ //server.handleClient();
 
  if (Flag_tempo_SalvarDados == true){
   Flag_tempo_SalvarDados = false;
@@ -360,15 +334,15 @@ void loop()
 
 
 void SalvarDadosEmArquivo(){
-  int TamanhoMaximoArquivo = 2; // Tamanho maximo para o arquivo de dados, se passar disso será criado um backup e o arquivo dados será zerado 
 
+  // O espaço maximo é de 1,5Mbytes, então fica 768kB para dados e 768kb para o backup
+  //int TamanhoMaximoArquivo = 750; // Tamanho maximo para o arquivo de dados, 750kb para ficar 18kb de folga
+  float TamanhoMaximoArquivo = 7.5, TamanhoArquivo; 
   String DadosAtuais,
          Entradas,
          Saidas,
          ReturnHive,   // retorna para a colmeia
          ReturnField;  // retorna para o campo
-
-  float TamanhoArquivo;
 
   Serial.println("Temporizador de salvar dados no arquivo ativado\n");
   Serial.print("Intervalo entre a ultimo armazenamento: ");
@@ -378,26 +352,39 @@ void SalvarDadosEmArquivo(){
   listDir(LittleFS, "/", 1); // List the directories up to one level beginning at the root directory
   // "Data, Entradas, Saidas, Bateria, Erros"
   //appendFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n"); //Append some text to the previous file
-
-  DadosAtuais = String(ReadtimeRTC()); // Data
+  DadosAtuais = "";
+  DadosAtuais = ReadtimeRTC('D'); // Data
+  DadosAtuais +=  ",";
+  DadosAtuais += ReadtimeRTC('H'); // Hora
   DadosAtuais +=  ",";
   DadosAtuais += String(EntradasBuffer); // Entradas
-
+  //DadosAtuais += "988";
   DadosAtuais +=  ",";
   DadosAtuais += String(SaidasBuffer); // Saidas
-
+  //DadosAtuais += "988";
   DadosAtuais +=  ",";
-  DadosAtuais += "12.5v"; // Bateria
-
+  Bateria = ReadBattery(); // Tensão da bateria
+  DadosAtuais += Bateria; // Tensão da bateria
+  //DadosAtuais += "12.5"; // Bateria
   DadosAtuais +=  ",";
-  DadosAtuais += "nenhum\r\n"; // Erros
+  DadosAtuais += "\r\n"; // Erros
 
-  //deleteFile(LittleFS, "/Backup_Dados1.csv");
-  //deleteFile(LittleFS, "/Dados1.csv");
+  //UpdateWeb();
+
+  Serial.println("********************************************");
+  Serial.println("Dados:");
+  Serial.println(DadosAtuais);
+  Serial.println("********************************************");
+
+  
+  //deleteFile(LittleFS, "/Dados.csv");
+  //deleteFile(LittleFS, "/Backup_Dados.csv");
+  
 
   if(!FileExiste(LittleFS, "/Dados.csv"))  // Se o arquivo Não existir, cria o arquivo e imprime o cabeçalho
   { 
-    writeFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n");
+    //writeFile(LittleFS, "/Dados.csv", "Data (TimeStamp), Entradas, Saidas, Bateria (Volts), Falhas\r\n");
+    writeFile(LittleFS, "/Dados.csv", "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
     appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str()); //Append some text to the previous file
     DeleteDadosAtuais();
   }else{
@@ -413,14 +400,15 @@ void SalvarDadosEmArquivo(){
       if(!FileExiste(LittleFS, "/Backup_Dados.csv")){ // Se o backup não existir, o arquivo dados será transformado em backup
       
         renameFile(LittleFS, "/Dados.csv", "/Backup_Dados.csv"); 
-        writeFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n");
+        //writeFile(LittleFS, "/Dados.csv", "Data (TimeStamp), Entradas, Saidas, Bateria (Volts), Falhas \r\n");
+        writeFile(LittleFS, "/Dados.csv", "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
         appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
         DeleteDadosAtuais();
       }else{ // Se o backup existir, o backup antigo será deletado e o arquivo dados será transformado em backup
       
         deleteFile(LittleFS, "/Backup_Dados.csv");
         renameFile(LittleFS, "/Dados.csv", "/Backup_Dados.csv"); // Se o arquivo ficar maior que 1Mbyte será criado um backup (evitar ficar manipulando arquivos muito grandes)
-        writeFile(LittleFS, "/Dados.csv", "Data, Entradas, Saidas, Bateria, Erros\r\n");
+        writeFile(LittleFS, "/Dados.csv", "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
         appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
         DeleteDadosAtuais();
       }
@@ -431,6 +419,9 @@ void SalvarDadosEmArquivo(){
       Serial.print(" kBytes\n");
       appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
       DeleteDadosAtuais();
+
+      Serial.println(LittleFS.totalBytes()); // Total de Bytes na partição LittleFS
+      Serial.println(LittleFS.usedBytes());  // Total de Bytes usados
     }
   }
 }
@@ -438,7 +429,8 @@ void SalvarDadosEmArquivo(){
 void DeleteDadosAtuais(){
   EntradasBuffer = 0;
   SaidasBuffer = 0;
-
+  ReturnHiveBuffer = 0,   // retorna para a colmeia
+  ReturnFieldBuffer = 0;  // retorna para o campo
 }
 
 
@@ -482,43 +474,125 @@ uint8_t ReadingSensors(){
   return(digitalRead(S1)<< 0) | (digitalRead(S2)<< 1) | (digitalRead(S3)<< 2);
 }
 
-unsigned int ReadtimeRTC(){
-  // Retorna a data no formato timestamp Unix de  0 até 4.294.967.295 segundos
+String ReadtimeRTC(char tipo){
+  /*
+    D -> `DD/MM/YY`
+    H -> `hh:mm`
+    F -> `YYYY-MM-DDThh:mm:ss`
+    T -> '1767602334'    formato timeStamp
+  */
    digitalWrite(SaidaVext,LOW); 
    if (!rtc.begin(&I2C_RTC)){
      Serial.println(" RTC nao encontrado ");
-     return NULL;
+     return "NULL";
    }
+   String Data = "";
    DateTime now = rtc.now();
-   Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
-   digitalWrite(SaidaVext,HIGH); //Desliga o modulo RTC3132 para economizar consumo
-   return now.unixtime();
+   
+
+   switch (tipo){
+    case 'D':
+      Data = String(now.day());
+      Data += "/";
+      Data += String(now.month());
+      Data += "/";
+      
+      if(now.year() > 2000)
+        Data += String(now.year()-2000);
+      else
+        Data += String(now.year());
+      digitalWrite(SaidaVext,HIGH); //Desliga o modulo RTC3132 para economizar consumo
+      break;
+    case 'H':
+      Data = now.timestamp(DateTime::TIMESTAMP_TIME); // `hh:mm:ss`
+      digitalWrite(SaidaVext,HIGH); //Desliga o modulo RTC3132 para economizar consumo
+      break;
+    case 'F':
+      Data = String(now.timestamp(DateTime::TIMESTAMP_FULL)); //!< `YYYY-MM-DDThh:mm:ss`
+      break;
+    default:
+      Data = String(now.unixtime()); // Retorna a data no formato timestamp Unix de  0 até 4.294.967.295 segundos
+   }
+   return Data;
 }
+
+
+
 
 void IRAM_ATTR InterruptExternSensors(){
   Flag_Sensors = true;
 }
 
-float ReadBattery(){
-  // (0-3.3V) em valores digitais de 0 a 4095 (2^12)
+String ReadBattery(){
+  float tensao = 0.0, mediana, calibracao = 1.134;
+  unsigned int Ad[10], min, aux;
+  char cont = 0, cont2 = 0;
 
-  float tensao = 0.0, mediana;
-  unsigned int Ad[10];
-  char cont = 0;
-
-  Serial.println("| ");
+// Coleta das tensões
   for(cont=0;cont<10;cont++) {
     Ad[cont]= analogRead(Adc_Battery);
-    Serial.print(Ad[cont]);
-    Serial.print(" | ");
     delay(50);
   }
-  Serial.print("\nMediana tensao: ");
-  mediana = (Ad[4]+Ad[5]) / 2 ;
+
+// Ordenação do vetor de leituras (Selection Sort)
+  Serial.println("\nVetor de leituras ordenado:\n");
+  Serial.print("| ");
+  for(cont = 0;cont < 9;cont++){
+    min = cont;
+    for(cont2 = cont + 1; cont2 < 10; cont2++){
+      if(Ad[cont2] < Ad[min]){
+        min = cont2;
+      }
+    }
+
+    aux = Ad[cont];
+    Ad[cont] = Ad[min];
+    Ad[min] = aux;
+
+    Serial.print(Ad[cont]);
+    Serial.print(" | ");
+
+  }
+  Serial.print(Ad[9]);
+  Serial.print(" | ");
+  Serial.println("\nMediana: ");
+  mediana = (Ad[4]+Ad[5]) / 2.0 ;
   Serial.print(mediana);
   Serial.println("");
+  Serial.print("\ntensao: ");
+
+  /*
+   (0-3.3V) em valores digitais de 0 a 4095 (2^12)
+    4096 -> 3,3v  Resolução = 0,8056640625mV  0,00080566
+    Vout = mediana * 0.0008056640625
+    
+    Divisor de tensão R1 = 222k, R2 = 22k
+    Vout = Vin*R2/(R1+R2) -> Vin = Vout*(R1+R2)/R2
+    Vin = Vout*(222k+22k)/22k -> Vin = Vout*11
+
+    Queda de tensão do diodo medida em bancada = 0,63v, então será tensão medida + 0,63v = tensão da bateria
+
+    vout = mediana * 0,00080566 
+
+    vin = (mediana * 0.0008056640625)*11 + 0.63
+    vin = mediana * 0,0088623046875 + 0,63
+    
+    calibração para chegar a tensão medida = 1,125
+      medidas em bancada
+      multimetro =  1,0888v, tensão adc = 0,96v
+      calibração = 1,088/0,96 = 1,134
+  */
+  Serial.println("ADC: ");
+  Serial.print(mediana * 0.0008056640625 * calibracao);
+  Serial.println("");
+  if(mediana < 0.5) // evita a correção de 0,63v da queda do diodo se a tensão zerar
+    tensao = 0.0;
+  else
+    //tensao = (mediana * 0.00894287109375 * calibracao) + 0.63; // 0 a 3,3v
+    tensao = (mediana * 0.0088623046875 * calibracao) + 0.63; // 0 a 3,3v
+
   
-  return mediana;
+  return String(tensao,1); // retorna apenas com uma casa decimal
 }
 
 

@@ -162,7 +162,7 @@ void registraEvento(uint8_t ultimoEstadoFSM) {
     if (sentidoFSM == ENTRADA) {
     Serial.println("");
     Serial.print(" RETORNO PARA O CAMPO REGISTRADA AS ");
-    Serial.print(ReadtimeRTC());
+    Serial.print(ReadtimeRTC('F'));
     Serial.println("\n");
     ReturnFieldBuffer++; // retorna para o campo
 
@@ -170,7 +170,7 @@ void registraEvento(uint8_t ultimoEstadoFSM) {
   } else {
     Serial.println("");
     Serial.print("RETORNO PARA A COLMEIA REGISTRADA AS ");
-    Serial.print(ReadtimeRTC());
+    Serial.print(ReadtimeRTC('F'));
     Serial.println("\n");
     ReturnHiveBuffer++; // retorna para a colmeia
     //f.printf("%s,%s,SAIDA\n", data, hora);
@@ -182,7 +182,7 @@ void registraEvento(uint8_t ultimoEstadoFSM) {
     if (sentidoFSM == ENTRADA) {
     Serial.println("");
     Serial.print(" ENTRADA NA COLMEIA REGISTRADA AS ");
-    Serial.print(ReadtimeRTC());
+    Serial.print(ReadtimeRTC('F'));
     Serial.println("\n");
     EntradasBuffer++;
 
@@ -190,7 +190,7 @@ void registraEvento(uint8_t ultimoEstadoFSM) {
     } else {
     Serial.println("");
     Serial.print("SAIDA PARA O CAMPO REGISTRADA AS ");
-    Serial.print(ReadtimeRTC());
+    Serial.print(ReadtimeRTC('F'));
     Serial.println("\n");
     SaidasBuffer++;
     //f.printf("%s,%s,SAIDA\n", data, hora);

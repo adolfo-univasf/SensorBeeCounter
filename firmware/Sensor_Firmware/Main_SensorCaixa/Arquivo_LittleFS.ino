@@ -247,6 +247,23 @@ void testFileIO(fs::FS &fs, const char * path){
 volatile bool flagAtualizar = false;
 
 
+
+
+/* variaveis
+  EntradasBuffer
+  SaidasBuffer
+  ReturnHiveBuffer   // retorna para a colmeia
+  ReturnFieldBuffer  // retorna para o campo
+
+
+  Bateria
+*/
+
+
+
+
+
+
 const char PAGE_HTML[] PROGMEM = R"rawliteral(
 
   <!DOCTYPE html>
@@ -254,7 +271,7 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Download de Arquivo</title>
+  <title>Sensor BeeCounter</title>
 
   <style>
   body {
@@ -268,7 +285,7 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   
   h1 {
   font-size: 2.2rem;
-  margin-bottom: 50px;
+  margin-bottom: 30px;
   }
   
   h2 {
@@ -281,6 +298,39 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   div {
     margin-left: 10px;
   }
+
+
+table.dados {
+  width: 90%;
+  max-width: 400px;
+  border-collapse: collapse;
+  margin-left: 10px;
+  margin-bottom: 20px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+table.dados th {
+  text-align: left;
+  padding: 10px;
+  background: #0066cc;
+  color: white;
+  font-weight: normal;
+  width: 35%;
+}
+
+table.dados td {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+table.dados tr:last-child td {
+  border-bottom: none;
+}
+
+
   
   button {
   margin-left: 15px;
@@ -309,13 +359,35 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   <body>
 
   <h1>Sensor BeeCounter</h1>
-  <h2>Dados em tempo real:</h2>
-  <b>Contador:</b>
-  <span id="contador">0</span>
+  <h2>Dados Atuais:</h2>
+
+  <table class="dados">
+    <tr>
+      <th>Data</th>
+      <td>%V_DATA%</td>
+    </tr>
+  <tr>
+    <th>Hora</th>
+    <td>%V_HORA%</td>
+  </tr>
+  <tr>
+    <th>Entradas</th>
+    <td>%V_ENTRADAS%</td>
+  </tr>
+  <tr>
+    <th>Saídas</th>
+    <td>%V_SAIDAS%</td>
+  </tr>
+  <tr>
+    <th>Bateria (V)</th>
+    <td>%V_BATERIA%</td>
+  </tr>
+</table>
+
   <h2>Download arquivos:</h2>
   
   <div id="files">
-  <!-- FILE_LIST -->
+  %V_FILE_LIST%
   </div>
   
   <footer>
@@ -347,6 +419,64 @@ const char PAGE_FILE_NOT_FOUND[] PROGMEM = R"rawliteral(
 )rawliteral";
 
 // *****************************************************************************************************************
+
+
+String processor(const String& var) {
+  if (var == "V_DATA")    return String(ReadtimeRTC('D'));
+  if (var == "V_HORA")    return String(ReadtimeRTC('H'));
+  if (var == "V_BATERIA") return String(Bateria);
+  if (var == "V_ENTRADAS") return String(EntradasBuffer);
+  if (var == "V_SAIDAS")   return String(SaidasBuffer);
+  if (var == "V_FILE_LIST")  return gerarHTMLArquivos();
+  return "";
+}
+
+void UpdateWeb(){
+
+  /*
+  // Rota principal "/"
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    // Envia direto da PROGMEM e processa os marcadores
+    request->send_P(200, "text/html", PAGE_HTML, processor);
+  });
+
+  // Rota de download
+  server.on("/download", HTTP_GET, handleFileDownload);
+
+  // Inicia o servidor
+  server.begin();
+
+
+*/
+
+
+  
+
+  
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+                  
+    String page = PAGE_HTML; // copia do PROGMEM
+    
+    page.replace("%V_FILE_LIST%", gerarHTMLArquivos()); 
+    //page.replace("<!-- FILE_LIST -->", gerarHTMLArquivos()); 
+    page.replace("%V_DATA%", ReadtimeRTC('D'));
+    page.replace("%V_HORA%", ReadtimeRTC('H'));
+    page.replace("%V_BATERIA%", Bateria);
+    page.replace("%V_ENTRADAS%", String(EntradasBuffer));
+    page.replace("%V_SAIDAS%", String(SaidasBuffer));
+    request->send(200, "text/html", page);
+  });
+  //request->send_P(200, "text/html", PAGE_HTML, processor);
+
+  server.on("/download", HTTP_GET, handleFileDownload);
+  server.begin();
+  
+
+}
+
+
+
+
 
 String formatarTamanho(size_t bytes) {
   if (bytes < 1024) {
@@ -403,41 +533,36 @@ String gerarHTMLArquivos() {
   return html;
 }
 
-void handleFileDownload() 
-{
-  uint8_t buffer[512];
-  //File file = LittleFS.open("/mydir/Dados.csv", "r");
-  //File file = LittleFS.open("/teste.csv", "r");
-     
-  if (!server.hasArg("file")) {
-    server.send(400, "text/plain", "Arquivo não especificado");
+void handleFileDownload(AsyncWebServerRequest *request) {
+
+  if (!request->hasParam("file")) {
+    request->send(400, "text/plain", "Arquivo não especificado");
     return;
   }
 
-  String fileName = server.arg("file"); // ex: Dados.csv
-  String filePath = "/" + fileName; // caminho real no FS
-  File file = LittleFS.open(filePath, "r");
+  String fileName = request->getParam("file")->value(); // ex: Dados.csv
+  String filePath = "/" + fileName;
 
-  if (!file) {
-    server.send(404, "text/html", PAGE_FILE_NOT_FOUND);
+  if (!LittleFS.exists(filePath)) {
+    request->send_P(404, "text/html", PAGE_FILE_NOT_FOUND);
     return;
   }
 
-  server.setContentLength(file.size());
-  server.sendHeader("Content-Type", "application/octet-stream");
-  server.sendHeader(
+  AsyncWebServerResponse *response =
+    request->beginResponse(
+      LittleFS,
+      filePath,
+      "application/octet-stream",
+      true   // true = download (Content-Disposition)
+    );
+
+  response->addHeader(
     "Content-Disposition",
     "attachment; filename=\"" + fileName + "\""
   );
-  server.sendHeader("Connection", "close");
-  server.send(200);
 
-  while (file.available()) 
-  {
-    size_t len = file.read(buffer, sizeof(buffer));
-    server.client().write(buffer, len);
-  }
-  file.close();
+  request->send(response);
+
 }
 
 
