@@ -24,7 +24,7 @@ Library:
 #include <AsyncTCP.h>
 //#include <ESPAsyncWebServer.h>
 
-
+#include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include "heltec.h"
 
@@ -178,7 +178,7 @@ unsigned int EntradasBuffer = 0,
              ReturnHiveBuffer = 0,   // retorna para a colmeia
              ReturnFieldBuffer = 0;  // retorna para o campo
 
-String Bateria = "0.0";
+String Bateria = "0.0",Erros = "";
 
 /******************* função principal (setup) *********************/
 void setup()
@@ -256,15 +256,9 @@ void setup()
 
   if (rtc.lostPower()) {
     Serial.println("RTC lost power, let's set the time!");
-    rtc.adjust(DateTime(2026, 1, 5, 8, 32, 0)); //     5/01/2026  8h:32 min
+    rtc.adjust(DateTime(2026, 2, 11, 8, 32, 0)); //     11/02/2026  8h:32 min
+    Erros += " RTC_lost_power";
   }
-
-  if (digitalRead(button_WakeUp) == HIGH)
-  {
-    rtc.adjust(DateTime(2026, 1, 5, 8, 32, 0));
-    Serial.println(" RTC Setado");
-  }
-  Serial.flush();
 
   BeginLittleFS();
 
@@ -367,6 +361,8 @@ void SalvarDadosEmArquivo(){
   DadosAtuais += Bateria; // Tensão da bateria
   //DadosAtuais += "12.5"; // Bateria
   DadosAtuais +=  ",";
+  DadosAtuais +=  Erros;
+  
   DadosAtuais += "\r\n"; // Erros
 
   //UpdateWeb();
@@ -429,8 +425,9 @@ void SalvarDadosEmArquivo(){
 void DeleteDadosAtuais(){
   EntradasBuffer = 0;
   SaidasBuffer = 0;
-  ReturnHiveBuffer = 0,   // retorna para a colmeia
+  ReturnHiveBuffer = 0;   // retorna para a colmeia
   ReturnFieldBuffer = 0;  // retorna para o campo
+  Erros = "";
 }
 
 

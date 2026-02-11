@@ -1,68 +1,206 @@
-
 <!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Download de Arquivo</title>
+  <html lang="pt-BR">
+  <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sensor BeeCounter</title>
 
-<style>
-body {
-margin: 0;
-padding: 20px;
-font-family: Arial, sans-serif;
-background: #f4f4f4;
-text-align: left;
+  <style>
+  body {
+  margin: 0;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  background: #f4f4f4;
+  text-align: left;
+  }
+  
+  
+  h1 {
+  font-size: 2.2rem;
+  margin-bottom: 30px;
+  }
+  
+  h2 {
+  margin-left: 5px;
+  
+  font-size: 1.4rem;
+  margin-bottom: 15px;
+  }
+  
+  div {
+    margin-left: 10px;
+  }
+
+
+table.dados {
+  width: 90%;
+  max-width: 400px;
+  border-collapse: collapse;
+  margin-left: 10px;
+  margin-bottom: 20px;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+table.dados th {
+  text-align: left;
+  padding: 10px;
+  background: #0066cc;
+  color: white;
+  font-weight: normal;
+  width: 35%;
+}
+
+table.dados td {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+table.dados tr:last-child td {
+  border-bottom: none;
+}
+
+.linha-data {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-sync {
+  width: auto;
+  padding: 5px 10px;
+  margin: 0;
+  font-size: 1.2rem;
+  background: transparent;
+  color: #0066cc;
+  border-radius: 6px;
 }
 
 
-h1 {
-font-size: 2.2rem;
-margin-bottom: 100px;
+  
+  button {
+  margin-left: 15px;
+  margin-top: 10px;
+  margin-bottom: 20px;
+  width: 100%;
+  max-width: 250px;
+  font-size: 1rem;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: #0066cc;
+  color: #fff;
+  }
+  
+  footer {
+  margin-left: 5px;
+  margin-top: 50px;
+  font-size: 0.85rem;
+  color: #666;
+  }
+  </style>
+  
+  </head>
+
+  <body>
+
+  <h1>Sensor BeeCounter</h1>
+  <h2>Dados Atuais:</h2>
+
+  <table class="dados">
+    <tr>
+      <th>Data</th>
+      <td class="linha-data">
+	  <span>%V_DATA%</span>
+	  <button class="btn-sync" onclick="sincronizarDataHora()"> ⚙️ </button>
+	  </td>
+	  
+    </tr>
+  <tr>
+    <th>Hora</th>
+    <td>%V_HORA%</td>
+  </tr>
+  <tr>
+    <th>Entradas</th>
+    <td>%V_ENTRADAS%</td>
+  </tr>
+  <tr>
+    <th>Saídas</th>
+    <td>%V_SAIDAS%</td>
+  </tr>
+  <tr>
+    <th>Bateria (V)</th>
+    <td>%V_BATERIA%</td>
+  </tr>
+    <tr>
+    <th>Erros</th>
+    <td>%V_Erros%</td>
+  </tr>
+</table>
+
+
+
+  <h2>Download arquivos:</h2>
+  
+  <div id="files">
+  %V_FILE_LIST%
+  </div>
+  
+  <footer>
+  <b>Eng. Adolfo Castro</b>
+  </footer>
+
+
+
+<script>
+  function sincronizarDataHora() {
+
+    const agora = new Date();
+
+    const dados = {
+      ano: agora.getFullYear(),
+      mes: agora.getMonth() + 1,
+      dia: agora.getDate(),
+      hora: agora.getHours(),
+      minuto: agora.getMinutes(),
+      segundo: agora.getSeconds()
+    };
+    // 🔹 Função para adicionar zero à esquerda
+    const doisDigitos = (num) => num.toString().padStart(2, '0');
+
+    const dataFormatada =
+      `${doisDigitos(dados.dia)}/` +
+      `${doisDigitos(dados.mes)}/` +
+      `${dados.ano} ` +
+      `${doisDigitos(dados.hora)}:` +
+      `${doisDigitos(dados.minuto)}:` +
+      `${doisDigitos(dados.segundo)}` ;
+
+
+     if (!confirm('Deseja atualizar a data e hora do dispositivo para: \n\n${dataFormatada}?')) {
+    return;
+    }
+
+    fetch("/setDateTime", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(dados)
+    })
+    .then(response => response.text())
+    .then(data => {
+      alert("Data/Hora atualizada com sucesso!");
+    })
+    .catch(err => {
+      alert("Erro ao atualizar.");
+    });
 }
-
-h2 {
-margin-left: 5px;
-
-font-size: 1.4rem;
-margin-bottom: 15px;
-}
+</script>
 
 
-button {
-margin-left: 15px;
-margin-top: 20px;
-width: 100%;
-max-width: 300px;
-font-size: 1rem;
-padding: 16px;
-border: none;
-border-radius: 10px;
-background: #0066cc;
-color: #fff;
-}
 
-
-footer {
-margin-left: 5px;
-margin-top: 50px;
-font-size: 0.85rem;
-color: #666;
-}
-</style>
-
-</head>
-<body>
-<h1>Sensor BeeCounter</h1>
-<h2>Download arquivos:</h2>
-<button onclick="window.location.href='/download'">
-Baixar Dados.csv
-</button>
-<button onclick="window.location.href='/download'">
-Baixar Logs.csv
-</button>
-<footer>
-<b>Eng. Adolfo Castro</b>
-</footer>
-</body>
-</html>
+  </body>
+  </html>

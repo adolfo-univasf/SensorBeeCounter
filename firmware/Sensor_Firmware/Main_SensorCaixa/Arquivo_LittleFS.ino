@@ -246,24 +246,6 @@ void testFileIO(fs::FS &fs, const char * path){
 
 volatile bool flagAtualizar = false;
 
-
-
-
-/* variaveis
-  EntradasBuffer
-  SaidasBuffer
-  ReturnHiveBuffer   // retorna para a colmeia
-  ReturnFieldBuffer  // retorna para o campo
-
-
-  Bateria
-*/
-
-
-
-
-
-
 const char PAGE_HTML[] PROGMEM = R"rawliteral(
 
   <!DOCTYPE html>
@@ -282,7 +264,6 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   text-align: left;
   }
   
-  
   h1 {
   font-size: 2.2rem;
   margin-bottom: 30px;
@@ -300,50 +281,108 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   }
 
 
-table.dados {
-  width: 90%;
-  max-width: 400px;
-  border-collapse: collapse;
-  margin-left: 10px;
-  margin-bottom: 20px;
-  background: #fff;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
+  table.dados {
+    width: 90%;
+    max-width: 400px;
+    border-collapse: collapse;
+    margin-left: 5px;
+    margin-bottom: 20px;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
 
-table.dados th {
-  text-align: left;
-  padding: 10px;
-  background: #0066cc;
-  color: white;
-  font-weight: normal;
-  width: 35%;
-}
+  table.dados th {
+    text-align: left;
+    padding: 10px;
+    background: #0066cc;
+    color: white;
+    font-weight: normal;
+    width: 40%;
+  }
 
-table.dados td {
-  padding: 10px;
-  border-bottom: 1px solid #ddd;
-}
+  table.dados td {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+  }
 
-table.dados tr:last-child td {
-  border-bottom: none;
-}
+  table.dados tr:last-child td {
+    border-bottom: none;
+  }
 
+  .linha-data {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
 
-  
+  .btn-sync {
+    width: auto;
+    padding: 5px 10px;
+    margin: 0;
+    font-size: 1.2rem;
+
+    border-radius: 6px;
+  }
+
+  .file {
+    margin-bottom: 10px;
+  }
+
   button {
-  margin-left: 15px;
-  margin-top: 10px;
-  margin-bottom: 20px;
-  width: 100%;
-  max-width: 250px;
-  font-size: 1rem;
-  padding: 10px;
-  border: none;
-  border-radius: 8px;
-  background: #0066cc;
-  color: #fff;
+    margin-left: 5px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    width: 100%;
+    max-width: 250px;
+    font-size: 1rem;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    background: #0066cc;
+    color: #fff;
+    cursor: pointer;
+    box-sizing: border-box; /* evita que padding aumente o tamanho */
+    transition: background 0.3s ease;
+  }
+
+  /* Container dos botões alinhados */
+  .botoes-arquivo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+    /* Para os botões ocuparem só o espaço necessário dentro do flex */
+  }
+
+  /* Botão Download: usa base genérica, só restringe largura para não ocupar toda */
+  .btn-download {
+    width: auto;       /* sobrescreve width 100% */
+    min-width: 120px;  /* largura mínima para ficar confortável */
+    padding: 10px 16px; /* padding mais largo */
+  }
+
+  /* Botão Delete: mantém estilo parecido, mas menor e vermelho */
+  .btn-delete {
+    width: auto;
+    min-width: 40px;      /* largura menor, só para o ícone */
+    padding: 10px 12px;    /* padding menor */
+    background: #cf3a3a;  /* vermelho */
+    color: #fff;
+    font-size: 1.2rem;    /* fonte um pouco maior para o ícone */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Hover para download e delete (overrides genérico) */
+  .btn-download:hover {
+    background: #004a99;
+  }
+
+  .btn-delete:hover {
+    background: #9c1e1e;
   }
   
   footer {
@@ -352,6 +391,9 @@ table.dados tr:last-child td {
   font-size: 0.85rem;
   color: #666;
   }
+
+
+
   </style>
   
   </head>
@@ -363,24 +405,32 @@ table.dados tr:last-child td {
 
   <table class="dados">
     <tr>
-      <th>Data</th>
-      <td>%V_DATA%</td>
+      <th>📆 Data</th>
+      <td class="linha-data">
+	  <span>%V_DATA%</span>
+	  <button class="btn-sync" onclick="sincronizarDataHora()"> ⚙️ </button>
+	  </td>
+	  
     </tr>
   <tr>
-    <th>Hora</th>
+    <th>🕑 Hora</th>
     <td>%V_HORA%</td>
   </tr>
   <tr>
-    <th>Entradas</th>
+    <th>➡️ Entradas</th>
     <td>%V_ENTRADAS%</td>
   </tr>
   <tr>
-    <th>Saídas</th>
+    <th>⬅️ Saídas</th>
     <td>%V_SAIDAS%</td>
   </tr>
   <tr>
-    <th>Bateria (V)</th>
+    <th>🔋 Bateria (V)</th>
     <td>%V_BATERIA%</td>
+  </tr>
+    <tr>
+    <th>⚠️ Erros</th>
+    <td>%V_Erros%</td>
   </tr>
 </table>
 
@@ -394,14 +444,70 @@ table.dados tr:last-child td {
   <b>Eng. Adolfo Castro</b>
   </footer>
 
-
-
   <script>
-    const ws = new WebSocket(`ws://${location.host}/ws`); 
-    ws.onmessage = (event) => {
-    document.getElementById('contador').innerText = event.data;
+
+  function sincronizarDataHora() 
+  {
+    const agora = new Date();
+    const dados = {
+      ano: agora.getFullYear(),
+      mes: agora.getMonth() + 1,
+      dia: agora.getDate(),
+      hora: agora.getHours(),
+      minuto: agora.getMinutes(),
+      segundo: agora.getSeconds()
     };
-  </script>
+    // 🔹 Função para adicionar zero à esquerda
+    const doisDigitos = (num) => num.toString().padStart(2, '0');
+
+    const dataFormatada =
+      `${doisDigitos(dados.dia)}/` +
+      `${doisDigitos(dados.mes)}/` +
+      `${dados.ano} ` +
+      `${doisDigitos(dados.hora)}:` +
+      `${doisDigitos(dados.minuto)}:` +
+      `${doisDigitos(dados.segundo)}` ;
+
+
+    if (!confirm(`Deseja atualizar a data e hora do dispositivo para: \n\n${dataFormatada}?`)) {
+    return;
+    }
+
+    fetch("/setDateTime", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(dados)
+    })
+    .then(response => response.text())
+    .then(data => {
+      alert("Data/Hora atualizada com sucesso!");
+    })
+    .catch(err => {
+      alert("Erro ao atualizar.");
+    });
+  }
+
+  function confirmarExclusao(nomeArquivo) {
+
+    if (!confirm(`Deseja realmente apagar o arquivo:\n\n${nomeArquivo} ?`)) {
+      return;
+    }
+
+    fetch(`/delete?file=${nomeArquivo}`)
+      .then(response => response.text())
+      .then(data => {
+        alert("Arquivo apagado com sucesso!");
+        location.reload(); // Atualiza lista
+      })
+      .catch(err => {
+        alert("Erro ao apagar arquivo.");
+      });
+  }
+
+
+</script>
 
 
 
@@ -448,11 +554,6 @@ void UpdateWeb(){
 
 
 */
-
-
-  
-
-  
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
                   
     String page = PAGE_HTML; // copia do PROGMEM
@@ -464,19 +565,84 @@ void UpdateWeb(){
     page.replace("%V_BATERIA%", Bateria);
     page.replace("%V_ENTRADAS%", String(EntradasBuffer));
     page.replace("%V_SAIDAS%", String(SaidasBuffer));
+    page.replace("%V_Erros%", String(Erros));
+    
     request->send(200, "text/html", page);
   });
   //request->send_P(200, "text/html", PAGE_HTML, processor);
 
   server.on("/download", HTTP_GET, handleFileDownload);
+
+
+  server.on("/setDateTime", HTTP_POST,[](AsyncWebServerRequest *request){}, NULL,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+
+    StaticJsonDocument<256> doc;
+    DeserializationError error = deserializeJson(doc, data);
+    if (error) {
+      request->send(400, "text/plain", "JSON inválido");
+      return;
+    }
+    int ano     = doc["ano"];
+    int mes     = doc["mes"];
+    int dia     = doc["dia"];
+    int hora    = doc["hora"];
+    int minuto  = doc["minuto"];
+    int segundo = doc["segundo"];
+    // ✅ Validação básica
+    if (ano < 2024 || mes < 1 || mes > 12 ||
+        dia < 1 || dia > 31 ||
+        hora < 0 || hora > 23 ||
+        minuto < 0 || minuto > 59 ||
+        segundo < 0 || segundo > 59) {
+
+      request->send(400, "text/plain", "Data/Hora inválida");
+      return;
+    }
+    // Ajusta o RTC
+    rtc.adjust(DateTime(ano, mes, dia, hora, minuto, segundo));
+    request->send(200, "text/plain", "OK");
+  });
+
+  server.on("/delete", HTTP_GET, [](AsyncWebServerRequest *request){
+
+    if (!request->hasParam("file")) {
+      request->send(400, "text/plain", "Arquivo não informado");
+      return;
+    }
+
+    String nomeArquivo = request->getParam("file")->value();
+
+    // 🔒 Proteção contra Path Traversal
+    if (nomeArquivo.indexOf("..") >= 0) {
+      request->send(400, "text/plain", "Nome inválido");
+      return;
+    }
+
+    // 🔒 garantir que começa com "/"
+    if (!nomeArquivo.startsWith("/")) {
+      nomeArquivo = "/" + nomeArquivo;
+    }
+
+    // 🔒 Permitir apenas .csv
+    if (!nomeArquivo.endsWith(".csv")) {
+      request->send(400, "text/plain", "Extensão não permitida");
+      return;
+    }
+    // 🔎 Verifica se existe
+    if (!LittleFS.exists(nomeArquivo)) {
+      request->send(404, "text/plain", "Arquivo não encontrado");
+      return;
+    }
+
+    if (LittleFS.remove(nomeArquivo)) {
+      request->send(200, "text/plain", "OK");
+    } else {
+      request->send(500, "text/plain", "Erro ao remover");
+    }
+  });
   server.begin();
-  
-
 }
-
-
-
-
 
 String formatarTamanho(size_t bytes) {
   if (bytes < 1024) {
@@ -520,9 +686,19 @@ String gerarHTMLArquivos() {
       html += "<div class='file'>";
       html += "<strong>" + nome +"</strong>  [";
       html += formatarTamanho(tamanho) + "]<br>";
+
+      html += "<div class='botoes-arquivo'>";
       html += "<button onclick=\"window.location.href='/download?file=";
       html += nome;
       html += "'\">📥   Download</button>";
+      
+      // 🗑 Botão deletar
+      html += "<button class='btn-delete' onclick=\"confirmarExclusao('";
+      html += nome;
+      html += "')\"> 🗑️ </button>";
+      
+      
+      html += "</div>";
       html += "</div>";
     }
     file = root.openNextFile();
