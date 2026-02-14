@@ -37,15 +37,31 @@ Library:
 #define LED2 25
 #define calibrar false  // coloque true quando quiser calibrar
 
-//#define ssid "JRTELECOMADOLFO" // Your WiFi SSID
-//#define password "38632391"    // Your WiFi Password
-#define SSID "JRTELECOMADOLFO" // Your WiFi SSID
-#define PASSWORD "38632391"    // Your WiFi Password
 
 
 
 AsyncWebServer server(80);
 //WebServer server(80); // estatico
+
+
+#define SSID "JRTELECOMADOLFO" // Your WiFi SSID
+#define PASSWORD "38632391"    // Your WiFi Password
+#define WIFI_TIMEOUT 900000   // 15 minutos em milissegundos (15 * 60 * 1000)
+const char* AP_SSID = "BeeCounter";
+const char* AP_PASSWORD = "12345678";
+IPAddress local_IP(192, 168, 4, 1);
+IPAddress gateway(192, 168, 4, 1);
+IPAddress subnet(255, 255, 255, 0);
+
+bool wifiLigado = false;
+unsigned long wifiStartTime = 0;
+
+
+
+
+
+
+
 
 //*****************************   Estados dos sensores (bitmask)   *****************************
 #define WAIT        0b111  // repouso
@@ -135,12 +151,12 @@ uint8_t state_Sensors= 0;
 bool Flag_Sensors = false;
 bool State_button_WakeUp = true; // Button to ON Display
 
-const unsigned long Time_Display = 15000; // 15s
+const unsigned long Time_Display = 15000; // 30s
 unsigned long time_DisplayON= 0; // time the display is ON
 
 unsigned long TempoUltimoDadoSalvo = 0;
 unsigned long t = 0;
-unsigned long tempo_salvarDados = 30; // em segundos  Tempo em que o timer é configurado para armazenar os dados no arquivo csv
+unsigned long tempo_salvarDados = 300; // 5min *60 = 300 segundos  Tempo em que o timer é configurado para armazenar os dados no arquivo csv
 
 String packet, ip_server ;
 float currentBateria;
@@ -183,7 +199,7 @@ String Bateria = "0.0",Erros = "";
 /******************* função principal (setup) *********************/
 void setup()
 {
-  setCpuFrequencyMhz(160);  // 240Mhz = 140mA,   160Mhz = 119mA,  80Mhz = 105mA
+  setCpuFrequencyMhz(80);  // 240Mhz = 140mA,   160Mhz = 119mA,  80Mhz = 105mA
 
   pinMode(button_WakeUp,INPUT);
   pinMode(S1,INPUT);
@@ -262,6 +278,12 @@ void setup()
 
   BeginLittleFS();
 
+    // inicializando modulo rtc
+  
+
+
+
+/*
   Serial.println("\nConectando ao WiFi...");
   WiFi.begin(SSID, PASSWORD);
 
@@ -278,6 +300,17 @@ void setup()
   
   
   UpdateWeb();
+
+
+  */
+
+
+
+
+
+
+
+
 /*
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -291,7 +324,7 @@ void setup()
 
   server.begin();
   */
-  Serial.println("Servidor HTTP iniciado");
+
     //server.handleClient();
 
     /*server.on("/", HTTP_GET, []() {
@@ -314,8 +347,8 @@ void loop()
     state_Sensors = ReadingSensors();
     processaFSM(state_Sensors);
   }
- ReadButtonDisplay();// rotina para verificar se botão wake up foi pressionado 
- //server.handleClient();
+ ReadButtonDisplay();// rotina para verificar se botão wake up foi pressionado, se sim liga o wifi e gera a pagina web para download dos dados
+
 
  if (Flag_tempo_SalvarDados == true){
   Flag_tempo_SalvarDados = false;
@@ -327,11 +360,13 @@ void loop()
 
 
 
+
+
 void SalvarDadosEmArquivo(){
 
   // O espaço maximo é de 1,5Mbytes, então fica 768kB para dados e 768kb para o backup
   //int TamanhoMaximoArquivo = 750; // Tamanho maximo para o arquivo de dados, 750kb para ficar 18kb de folga
-  float TamanhoMaximoArquivo = 7.5, TamanhoArquivo; 
+  float TamanhoMaximoArquivo = 750, TamanhoArquivo; 
   String DadosAtuais,
          Entradas,
          Saidas,
@@ -430,6 +465,13 @@ void DeleteDadosAtuais(){
   Erros = "";
 }
 
+void Wifi_Web()
+{
+  // 🔹 Se botão for pressionado e WiFi estiver desligado
+
+
+
+}
 
 void ReadButtonDisplay(){
   if (digitalRead(button_WakeUp) == HIGH)
@@ -439,10 +481,10 @@ void ReadButtonDisplay(){
     time_DisplayON = millis();
     Heltec.display->displayOn();
     Serial.println("");
-    Serial.print(" EntradasBuffer: ");
+    Serial.print(" Entradas: ");
     Serial.print(EntradasBuffer);
     Serial.println("");
-    Serial.print(" SaidasBuffer: ");
+    Serial.print(" Saidas: ");
     Serial.print(SaidasBuffer);
     Serial.println("");
     Serial.print(" ReturnHiveBuffer: ");
@@ -453,11 +495,39 @@ void ReadButtonDisplay(){
     Serial.println("");
     Serial.print(ReadBattery());
     Serial.println("");
-   /* tensao = analogRead(Adc_Battery);
-    Serial.print(tensao);
-    Serial.println("");
-    delay(500);
-    */
+
+
+    if (!wifiLigado) 
+    {
+      delay(30); // debounce
+  
+      Serial.println("\nIniciando WiFi...");
+      
+  
+      WiFi.mode(WIFI_AP);
+      
+      char cont = 3;
+      while(!WiFi.softAPConfig(local_IP, gateway, subnet) && (cont > 0)){
+        Serial.println("Falha ao configurar IP fixo!");
+        display_WiFi_Failed(cont);
+        cont--;
+
+      }
+
+  
+      WiFi.softAP(AP_SSID, AP_PASSWORD);
+      
+  
+      Serial.println("WiFi AP iniciado!");
+      Serial.print("IP do ESP32: ");
+      Serial.println(WiFi.softAPIP());
+
+      display_Wifi_OK();
+      wifiLigado = true;
+      wifiStartTime = millis();
+      UpdateWeb();
+      
+    }
   }
 
   // desliga após 30 segundos
@@ -465,6 +535,22 @@ void ReadButtonDisplay(){
     State_button_WakeUp = false;
     Heltec.display->displayOff();
   }
+
+
+
+  // 🔹 Desliga WiFi após 30 minutos
+  if (wifiLigado && (millis() - wifiStartTime >= WIFI_TIMEOUT)) {
+    Serial.println("\nTempo expirado! Desligando WiFi...");
+
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_OFF);
+
+    wifiLigado = false;
+    displayDesligandoWifi();
+  }
+
+
+
 }
 
 uint8_t ReadingSensors(){

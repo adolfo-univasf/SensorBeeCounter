@@ -47,15 +47,13 @@ void display_WiFi_Failed(int cont)
   Heltec.display->setFont(ArialMT_Plain_16);
   Heltec.display->drawString(20, 0, "ERRO  WIFI ");
   Heltec.display->setFont(ArialMT_Plain_10);
-  Heltec.display->drawString(0, 18, "Tentando conectar a rede:");
-  Heltec.display->drawString(0, 32, String(SSID));
+  Heltec.display->drawString(0, 18, "Falha ao configurar IP fixo!");
   Heltec.display->drawString(0, 50, "Tentativas:");    
   Heltec.display->drawString(70, 50, String(cont));
   Heltec.display->display();
   delay(5000);
-  ms_paraSair();
 }
-
+/*
 void display_IPServidor()
 {
   ms_paraSair();
@@ -67,25 +65,38 @@ void display_IPServidor()
   Heltec.display->display();
   delay(6000);
 }
+*/
 void display_Wifi_OK()
 {
   Heltec.display->clear();
   Heltec.display->setFont(ArialMT_Plain_16);
-  Heltec.display->drawString(30, 25, "Wifi OK!");
+
+  Heltec.display->drawString(0, 0, "WIFI Ligado!");
   Heltec.display->display();
   delay(2000);
+  Heltec.display->clear();
+  Heltec.display->drawString(0, 0, "WIFI e Senha: ");
+  Heltec.display->drawString(15, 20, "BeeCounter");
+  Heltec.display->drawString(15, 40, " 12345678 ");
+  Heltec.display->display();
+  delay(2000);
+  Heltec.display->clear();
+  Heltec.display->drawString(0, 0, "Acesse o site :");
+  Heltec.display->drawString(10, 30, "192.168.4.1");
+  Heltec.display->display();
+  delay(1000);
 }
 
-void ms_paraSair()
+void displayDesligandoWifi()
 {
+  Heltec.display->displayOn();
   Heltec.display->clear();
   Heltec.display->setFont(ArialMT_Plain_10);
-  Heltec.display->drawString(0, 0, "Md Configuração ativado");
-  Heltec.display->drawString(0, 15, "para sair desligue");
-  Heltec.display->drawString(0, 30, "a chave de configuração");
-  Heltec.display->drawString(0, 45, "e reset a placa !");
+  Heltec.display->drawString(0, 0, "Tempo expirado! ");
+  Heltec.display->drawString(0, 30, "Desligando WiFi...");
   Heltec.display->display();
-  delay(8000);
+  delay(3000);
+  Heltec.display->displayOff();
 }
 
 void displayReadingsOnOled()

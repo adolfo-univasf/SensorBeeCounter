@@ -336,7 +336,7 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
     margin-bottom: 5px;
     width: 100%;
     max-width: 250px;
-    font-size: 1rem;
+    font-size: 1.1rem;
     padding: 10px;
     border: none;
     border-radius: 8px;
@@ -351,6 +351,7 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   .botoes-arquivo {
     display: flex;
     align-items: center;
+    justify-content: space-between; /* distribui espaço */
     gap: 8px;
     margin-top: 2px;
     /* Para os botões ocuparem só o espaço necessário dentro do flex */
@@ -360,6 +361,7 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   .btn-download {
     width: auto;       /* sobrescreve width 100% */
     min-width: 120px;  /* largura mínima para ficar confortável */
+    margin-left: 0;  /* remove margem esquerda */
     padding: 10px 16px; /* padding mais largo */
   }
 
@@ -367,10 +369,10 @@ const char PAGE_HTML[] PROGMEM = R"rawliteral(
   .btn-delete {
     width: auto;
     min-width: 40px;      /* largura menor, só para o ícone */
-    padding: 10px 12px;    /* padding menor */
-    background: #cf3a3a;  /* vermelho */
-    color: #fff;
-    font-size: 1.2rem;    /* fonte um pouco maior para o ícone */
+    padding: 8px 12px;    /* padding menor */
+    background: #d15252;  /* vermelho */
+    color: #d15252;
+    font-size: 1.3rem;    /* fonte um pouco maior para o ícone */
     display: flex;
     justify-content: center;
     align-items: center;

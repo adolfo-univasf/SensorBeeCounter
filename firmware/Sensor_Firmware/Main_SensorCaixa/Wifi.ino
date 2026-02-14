@@ -1,16 +1,18 @@
-#include <WiFi.h>
 
-unsigned long wifiStartTime;
-const unsigned long WIFI_TIMEOUT = 10 * 60 * 1000; // timeout de 10 min (o wifi)
 
-const char* ssid = "Sensor-BeeCounter";
-const char* password = "12345678"; // mínimo 8 caracteres
+//unsigned long int wifiStartTime;
+//const unsigned long WIFI_TIMEOUT = 10 * 60 * 1000; // timeout de 10 min (o wifi)
 
-bool wifiLigado = false;
-IPAddress local_ip(192,168,4,1);
-IPAddress gateway(192,168,4,1);
-IPAddress subnet(255,255,255,0);
+//const char* ssid = "Sensor-BeeCounter";
+//const char* password = "12345678"; // mínimo 8 caracteres
 
+//#define ssid "JRTELECOMADOLFO" // Your WiFi SSID
+//#define password "38632391"    // Your WiFi Password
+
+
+
+
+/*
 void startWifi() {
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(local_ip, gateway, subnet);
@@ -19,6 +21,11 @@ void startWifi() {
   Serial.print("\nIP fixo do Esp32: ");
   Serial.println(WiFi.softAPIP());
 }
+*/
+
+
+/*
+
 
 void WifiLoop() {
   if (digitalRead(button_WakeUp) == HIGH) {
@@ -38,7 +45,7 @@ void WifiLoop() {
   /*if (wifiLigado) {
     server.handleClient();
   }
-  */
+
 
   if (wifiLigado && millis() - wifiStartTime > WIFI_TIMEOUT) {
     WiFi.softAPdisconnect(true);
@@ -46,7 +53,7 @@ void WifiLoop() {
     wifiLigado = false;
   }
 }
-
+*/
 
 
 
