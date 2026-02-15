@@ -8,7 +8,6 @@ Library:
 ->Heltec ESP32 Dev-Boards by Heltec Automation Versão 1.1.1
 
 */
-
 //*****************************   Libraries   *****************************
 
 #include <EEPROM.h>
@@ -20,13 +19,12 @@ Library:
 #include <time.h>
 #include <Wire.h>
 #include "RTClib.h"
-//#include "Web_Front_End.h"
 #include <AsyncTCP.h>
-//#include <ESPAsyncWebServer.h>
-
 #include <ArduinoJson.h>
 #include <ESPAsyncWebServer.h>
 #include "heltec.h"
+#include "esp_task_wdt.h"
+#include "esp_system.h"
 
 //*****************************   Defines   *****************************
 
@@ -37,30 +35,28 @@ Library:
 #define LED2 25
 #define calibrar false  // coloque true quando quiser calibrar
 
-
-
+//*****************************   Configurações Wifi e Web   *****************************
 
 AsyncWebServer server(80);
 //WebServer server(80); // estatico
-
-
 #define SSID "JRTELECOMADOLFO" // Your WiFi SSID
 #define PASSWORD "38632391"    // Your WiFi Password
-#define WIFI_TIMEOUT 900000   // 15 minutos em milissegundos (15 * 60 * 1000)
 const char* AP_SSID = "BeeCounter";
 const char* AP_PASSWORD = "12345678";
 IPAddress local_IP(192, 168, 4, 1);
 IPAddress gateway(192, 168, 4, 1);
 IPAddress subnet(255, 255, 255, 0);
-
 bool wifiLigado = false;
 unsigned long wifiStartTime = 0;
 
 
+//*****************************   Definiçoes de Tempo   *****************************
 
-
-
-
+#define WDT_TIMEOUT 360   // wachdog 6 minutos (em segundos)
+#define WIFI_TIMEOUT 900000   // 15 minutos para desligar o wifi (15 * 60 * 1000) = 900000 milissegundos
+const unsigned long TIMEOUT_FSM = 5000; // 5 segundos
+const unsigned long Time_Display = 30000; // 30s
+unsigned long tempo_salvarDados = 300; // 5min *60 = 300 segundos  Tempo em que o timer é configurado para armazenar os dados no arquivo csv
 
 
 //*****************************   Estados dos sensores (bitmask)   *****************************
@@ -74,40 +70,7 @@ unsigned long wifiStartTime = 0;
 #define STATE_1_2_3 0b000  // sensor 1, 2 e 3 acionado
 
 RTC_DS3231 rtc; // modulo rtc
-
-//char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-
 TwoWire I2C_RTC = TwoWire(1); // I2C secundário (isolado)
-
-//*****************************   Variaveis Externas   *****************************
-
-extern const char PAGE_HTML[] PROGMEM; // HTML web page
-extern const char PAGE_FILE_NOT_FOUND[] PROGMEM;
-//extern const char index_html[] PROGMEM;
-//extern String readFile(fs::FS &fs, const char * path);
-extern String processor(const String& var);
-//extern void notFound(AsyncWebServerRequest *request);
-extern void Setup_Server();
-//extern void setup_Balanca();
-//extern void writeFile(fs::FS &fs, const char * path, const char * message);
-extern const char* PARAM_STRING; // WEB
-
-
-//PINOUT
-//******   INPUTS   ****** 
-const int S1 = 23; //mcu > este pino deve estar em low ao fazer o downloading do programa
-const int S2 = 2; 
-const int S3 = 17; 
-const int button_WakeUp = 36;
-const int botao_Configurar = 37;
-const int Adc_Battery = 38; //mcu > este pino deve estar somente como entrada
-
-//******   OUTPUTS   ****** 
-const int SaidaVext = 21; // Vext: External power supply (3,3v), control the switch of Vext through GPIO (LOW -> ON , HIGH -> OFF)   
-
-// RTC usa os pinos por padrão DS3231
-//SCL -> GPIO22 
-//SDA -> GPIO21
 
 enum EstadoFSM 
 {
@@ -126,40 +89,57 @@ enum Sentido
   SAIDA   = 1
 };
 
+//*****************************   Variaveis Externas   *****************************
+
+extern const char PAGE_HTML[] PROGMEM; // HTML web page
+extern const char PAGE_FILE_NOT_FOUND[] PROGMEM;
+extern String processor(const String& var);
+extern void Setup_Server();
+extern const char* PARAM_STRING; // WEB
+
+//*****************************   Constantes   *****************************
+
+const char* PARAM_INT   = "inputInt";
+const char* PARAM_FLOAT = "inputFloat";
+const int calVal_eepromAdress = 0;
+
+//******   PINOUT INPUTS   ****** 
+const int S1 = 23; //mcu > este pino deve estar em low ao fazer o downloading do programa
+const int S2 = 2; 
+const int S3 = 17; 
+const int button_WakeUp = 36;
+const int botao_Configurar = 37;
+const int Adc_Battery = 38; //mcu > este pino deve estar somente como entrada
+
+// RTC usa os pinos por padrão DS3231
+//SCL -> GPIO22 
+//SDA -> GPIO21
+
+//******   PINOUT OUTPUTS   ****** 
+const int SaidaVext = 21; // Vext: External power supply (3,3v), control the switch of Vext through GPIO (LOW -> ON , HIGH -> OFF)   
+
+// *****************************   Variables Global   *****************************
+
+unsigned int EntradasBuffer = 0,
+             SaidasBuffer = 0,
+             ReturnHiveBuffer = 0,   // retorna para a colmeia
+             ReturnFieldBuffer = 0;  // retorna para o campo
+String Bateria = "0.0",Erros = "";
+hw_timer_t * Timer_SalvarDados = NULL; // temporizador
+volatile bool Flag_tempo_SalvarDados = false;
+uint8_t state_Sensors= 0;
+bool Flag_Sensors = false;
+bool State_button_WakeUp = true; // Button to ON Display
+unsigned long time_DisplayON= 0; // time the display is ON
+unsigned long TempoUltimoDadoSalvo = 0;
+unsigned long t = 0;
+String packet, ip_server ;
+float currentBateria;
 EstadoFSM estadoFSM = FSM_IDLE;
 Sentido sentidoFSM;
 unsigned long tempoEstado = 0;
 int Quant_timeout_state2 = 0;
-const unsigned long TIMEOUT_FSM = 5000; // 5 segundos
-
 String IDcaixa;  
-
-//******************************************************************
-
-const char* PARAM_INT   = "inputInt";
-const char* PARAM_FLOAT = "inputFloat";
-
-//******************************************************************
-
-hw_timer_t * Timer_SalvarDados = NULL; // temporizador
-volatile bool Flag_tempo_SalvarDados = false;
-
-// Variables
-const int     calVal_eepromAdress = 0;
-
-uint8_t state_Sensors= 0;
-bool Flag_Sensors = false;
-bool State_button_WakeUp = true; // Button to ON Display
-
-const unsigned long Time_Display = 15000; // 30s
-unsigned long time_DisplayON= 0; // time the display is ON
-
-unsigned long TempoUltimoDadoSalvo = 0;
-unsigned long t = 0;
-unsigned long tempo_salvarDados = 300; // 5min *60 = 300 segundos  Tempo em que o timer é configurado para armazenar os dados no arquivo csv
-
-String packet, ip_server ;
-float currentBateria;
 
 /*********************   Protótipos das funções **********************/
 void sendPacket();
@@ -177,24 +157,16 @@ void SalvarDadosEmArquivo();
 void DeleteDadosAtuais();
 void UpdateWeb();
 String processor(const String& var);
+void watchdogSetup();
 
 
 /*********************   Interrupção timer **********************/
+
 void IRAM_ATTR Ativa_Flag_tempo_SalvarDados()   //função de envio quando a interrupção é chamada
 {
   Flag_tempo_SalvarDados = true;
 }
-//AsyncWebServer server(80);
 
-
-// *****************************   Variables Global   *****************************
-
-unsigned int EntradasBuffer = 0,
-             SaidasBuffer = 0,
-             ReturnHiveBuffer = 0,   // retorna para a colmeia
-             ReturnFieldBuffer = 0;  // retorna para o campo
-
-String Bateria = "0.0",Erros = "";
 
 /******************* função principal (setup) *********************/
 void setup()
@@ -207,7 +179,6 @@ void setup()
   pinMode(S3,INPUT);
   pinMode(SaidaVext,OUTPUT);
   pinMode(botao_Configurar,INPUT);
-
 
   analogReadResolution(12); // Define a resolução (9-12 bits).
   analogSetAttenuation(ADC_11db); // Define a faixa de tensão. 
@@ -268,8 +239,6 @@ void setup()
     Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
   }
 
-  //rtc.adjust(DateTime(2026, 1, 05, 8, 25, 0));
-
   if (rtc.lostPower()) {
     Serial.println("RTC lost power, let's set the time!");
     rtc.adjust(DateTime(2026, 2, 11, 8, 32, 0)); //     11/02/2026  8h:32 min
@@ -277,65 +246,7 @@ void setup()
   }
 
   BeginLittleFS();
-
-    // inicializando modulo rtc
-  
-
-
-
-/*
-  Serial.println("\nConectando ao WiFi...");
-  WiFi.begin(SSID, PASSWORD);
-
-  while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-  }
-  Serial.println("\nWiFi conectado!");
-  Serial.print("IP local do ESP32: ");
-  Serial.print(WiFi.localIP());
-  Serial.println("\n");
-
-    // Página principal
-  
-  
-  UpdateWeb();
-
-
-  */
-
-
-
-
-
-
-
-
-/*
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    // Envia direto da PROGMEM e processa os marcadores
-    request->send_P(200, "text/html", PAGE_HTML, processor);
-  });
-
-  // Rota de download
-  server.on("/download", HTTP_GET, handleFileDownload);
-
-
-  server.begin();
-  */
-
-    //server.handleClient();
-
-    /*server.on("/", HTTP_GET, []() {
-                  // copia do PROGMEM
-
-    page.replace("<!-- FILE_LIST -->", gerarHTMLArquivos());
-    page.replace("%BATERIA%", Bateria);
-    server.send(200, "text/html", page);
-    });
-*/
-
+  watchdogSetup();
 }
 
 
@@ -358,10 +269,6 @@ void loop()
 
 // *********  Functions   *********
 
-
-
-
-
 void SalvarDadosEmArquivo(){
 
   // O espaço maximo é de 1,5Mbytes, então fica 768kB para dados e 768kb para o backup
@@ -372,6 +279,9 @@ void SalvarDadosEmArquivo(){
          Saidas,
          ReturnHive,   // retorna para a colmeia
          ReturnField;  // retorna para o campo
+
+
+  esp_task_wdt_reset();   // Alimenta o watchdog
 
   Serial.println("Temporizador de salvar dados no arquivo ativado\n");
   Serial.print("Intervalo entre a ultimo armazenamento: ");
@@ -397,21 +307,13 @@ void SalvarDadosEmArquivo(){
   //DadosAtuais += "12.5"; // Bateria
   DadosAtuais +=  ",";
   DadosAtuais +=  Erros;
-  
   DadosAtuais += "\r\n"; // Erros
-
-  //UpdateWeb();
 
   Serial.println("********************************************");
   Serial.println("Dados:");
   Serial.println(DadosAtuais);
   Serial.println("********************************************");
-
   
-  //deleteFile(LittleFS, "/Dados.csv");
-  //deleteFile(LittleFS, "/Backup_Dados.csv");
-  
-
   if(!FileExiste(LittleFS, "/Dados.csv"))  // Se o arquivo Não existir, cria o arquivo e imprime o cabeçalho
   { 
     //writeFile(LittleFS, "/Dados.csv", "Data (TimeStamp), Entradas, Saidas, Bateria (Volts), Falhas\r\n");
@@ -465,14 +367,6 @@ void DeleteDadosAtuais(){
   Erros = "";
 }
 
-void Wifi_Web()
-{
-  // 🔹 Se botão for pressionado e WiFi estiver desligado
-
-
-
-}
-
 void ReadButtonDisplay(){
   if (digitalRead(button_WakeUp) == HIGH)
   {
@@ -499,34 +393,23 @@ void ReadButtonDisplay(){
 
     if (!wifiLigado) 
     {
-      delay(30); // debounce
-  
-      Serial.println("\nIniciando WiFi...");
-      
-  
-      WiFi.mode(WIFI_AP);
-      
       char cont = 3;
+      delay(30); // debounce
+      Serial.println("\nIniciando WiFi...");
+      WiFi.mode(WIFI_AP);
       while(!WiFi.softAPConfig(local_IP, gateway, subnet) && (cont > 0)){
         Serial.println("Falha ao configurar IP fixo!");
         display_WiFi_Failed(cont);
         cont--;
-
       }
-
-  
       WiFi.softAP(AP_SSID, AP_PASSWORD);
-      
-  
       Serial.println("WiFi AP iniciado!");
       Serial.print("IP do ESP32: ");
       Serial.println(WiFi.softAPIP());
-
       display_Wifi_OK();
       wifiLigado = true;
       wifiStartTime = millis();
-      UpdateWeb();
-      
+      UpdateWeb(); // Página principal
     }
   }
 
@@ -536,21 +419,14 @@ void ReadButtonDisplay(){
     Heltec.display->displayOff();
   }
 
-
-
   // 🔹 Desliga WiFi após 30 minutos
   if (wifiLigado && (millis() - wifiStartTime >= WIFI_TIMEOUT)) {
     Serial.println("\nTempo expirado! Desligando WiFi...");
-
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_OFF);
-
     wifiLigado = false;
     displayDesligandoWifi();
   }
-
-
-
 }
 
 uint8_t ReadingSensors(){
@@ -572,7 +448,6 @@ String ReadtimeRTC(char tipo){
    String Data = "";
    DateTime now = rtc.now();
    
-
    switch (tipo){
     case 'D':
       Data = String(now.day());
@@ -599,9 +474,6 @@ String ReadtimeRTC(char tipo){
    return Data;
 }
 
-
-
-
 void IRAM_ATTR InterruptExternSensors(){
   Flag_Sensors = true;
 }
@@ -611,13 +483,13 @@ String ReadBattery(){
   unsigned int Ad[10], min, aux;
   char cont = 0, cont2 = 0;
 
-// Coleta das tensões
+  // Coleta das tensões
   for(cont=0;cont<10;cont++) {
     Ad[cont]= analogRead(Adc_Battery);
     delay(50);
   }
 
-// Ordenação do vetor de leituras (Selection Sort)
+  // Ordenação do vetor de leituras (Selection Sort)
   Serial.println("\nVetor de leituras ordenado:\n");
   Serial.print("| ");
   for(cont = 0;cont < 9;cont++){
@@ -674,11 +546,53 @@ String ReadBattery(){
     //tensao = (mediana * 0.00894287109375 * calibracao) + 0.63; // 0 a 3,3v
     tensao = (mediana * 0.0088623046875 * calibracao) + 0.63; // 0 a 3,3v
 
-  
   return String(tensao,1); // retorna apenas com uma casa decimal
 }
 
 
+void watchdogSetup(){
+
+  /************** Essa struct só existe no Core 2.x (IDF 4.4+). *********************/
+  
+  esp_task_wdt_init(WDT_TIMEOUT, true);  // timeout em segundos
+  esp_task_wdt_add(NULL);                // adiciona a task principal
+
+  /************** Verifica o motivo do ultimo reset *********************/
+  /*
+    0  - ESP_RST_UNKNOWN,    //!< Reset reason can not be determined
+    1  - ESP_RST_POWERON,    //!< Reset due to power-on event
+    2  - ESP_RST_EXT,        //!< Reset by external pin (not applicable for ESP32)
+    3  - ESP_RST_SW,         //!< Software reset via esp_restart
+    4  - ESP_RST_PANIC,      //!< Software reset due to exception/panic
+    5  - ESP_RST_INT_WDT,    //!< Reset (software or hardware) due to interrupt watchdog
+    6  - ESP_RST_TASK_WDT,   //!< Reset due to task watchdog
+    7  - ESP_RST_WDT,        //!< Reset due to other watchdogs
+    8  - ESP_RST_DEEPSLEEP,  //!< Reset after exiting deep sleep mode
+    9  - ESP_RST_BROWNOUT,   //!< Brownout reset (software or hardware)
+    10 - ESP_RST_SDIO,       //!< Reset over SDIO
+    */
+  esp_reset_reason_t motivo = esp_reset_reason();
+  switch (motivo){
+    case 0:
+      Erros = "RST_Unknown"; // Salva na historico o motivo do resete
+      break;
+    case 4:
+      Erros = "RST_Panic"; // Salva na historico o motivo do resete
+      break;
+    case 6:
+      Erros = "RST_Wachdog_Task"; // Salva na historico o motivo do resete
+      break;
+    case 7:
+      Erros = "RST_Wachdog"; // Salva na historico o motivo do resete
+      break;
+    default:  
+    Erros = "";
+    break;
+  } 
+  Serial.println("**************** Erros ***************\n");
+  Serial.println(Erros);
+  Serial.println("**************************************");
+}
 
 
 
