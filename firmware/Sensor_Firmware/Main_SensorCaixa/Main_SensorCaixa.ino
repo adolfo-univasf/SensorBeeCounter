@@ -124,7 +124,8 @@ unsigned int EntradasBuffer = 0,
              SaidasBuffer = 0,
              ReturnHiveBuffer = 0,   // retorna para a colmeia
              ReturnFieldBuffer = 0;  // retorna para o campo
-String Bateria = "0.0",Erros = "";
+String Bateria = "0.0",Erros = "",DadosAtuaisLora = "";
+String packSize = "--";
 hw_timer_t * Timer_SalvarDados = NULL; // temporizador
 volatile bool Flag_tempo_SalvarDados = false;
 uint8_t state_Sensors= 0;
@@ -139,7 +140,10 @@ EstadoFSM estadoFSM = FSM_IDLE;
 Sentido sentidoFSM;
 unsigned long tempoEstado = 0;
 int Quant_timeout_state2 = 0;
-String IDcaixa;  
+//String IDcaixa;  
+int packetSize = LoRa.parsePacket();
+
+const String ID_Sensor = "Sensor_1";   // ID do Sistema embarcado, ele irá determinar o nome dos arquivos salvos e comunicação lora
 
 /*********************   Protótipos das funções **********************/
 void sendPacket();
@@ -158,6 +162,7 @@ void DeleteDadosAtuais();
 void UpdateWeb();
 String processor(const String& var);
 void watchdogSetup();
+void EscutaGateway(int packetSize);
 
 
 /*********************   Interrupção timer **********************/
@@ -166,6 +171,8 @@ void IRAM_ATTR Ativa_Flag_tempo_SalvarDados()   //função de envio quando a int
 {
   Flag_tempo_SalvarDados = true;
 }
+
+
 
 
 /******************* função principal (setup) *********************/
@@ -238,7 +245,6 @@ void setup()
     DateTime now = rtc.now();
     Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
   }
-
   if (rtc.lostPower()) {
     Serial.println("RTC lost power, let's set the time!");
     rtc.adjust(DateTime(2026, 2, 11, 8, 32, 0)); //     11/02/2026  8h:32 min
@@ -247,6 +253,20 @@ void setup()
 
   BeginLittleFS();
   watchdogSetup();
+
+  //***********************************************   Configurações parametro Radio lora  ***********************************************
+
+  //LoRa.setTxPower(20); // Define a potência de transmissão. Valores típicos: 2 a 20 dBm, 20 dBm = potência máxima (usa PA_BOOST).       
+  LoRa.setTxPower(20, RF_PACONFIG_PASELECT_PABOOST); //    
+  LoRa.setSpreadingFactor(12); // Define o Spreading Factor (SF7 a SF12). SF7  = maior taxa de dados, menor alcance. SF12 = menor taxa de dados, maior alcance e sensibilidade.  Impacta diretamente no tempo no ar (Time On Air).   
+  LoRa.setSignalBandwidth(250E3); // Define a largura de banda do sinal (Bandwidth). Valores comuns: 125E3, 250E3, 500E3.
+  // Banda menor → maior sensibilidade e alcance.
+  // Banda maior → maior velocidade de transmissão.
+  LoRa.setCodingRate4(5); // Define o Coding Rate (taxa de correção de erro). Parâmetro 5 a 8 representa 4/5 até 4/8. Quanto maior o número, maior a redundância e robustez, porém menor a taxa útil de dados.       
+  LoRa.setPreambleLength(8); // Define o tamanho do preâmbulo. O preâmbulo é usado para sincronização entre transmissor e receptor. Valores maiores aumentam confiabilidade em links longos, mas aumentam o tempo no ar.    
+  LoRa.enableCrc(); // Habilita verificação CRC no payload. Garante detecção de erros no pacote recebido. Recomendado manter ativado.             
+  //LoRa.setSyncWord(0x34); // Define o Sync Word. Funciona como "identificador de rede". Dispositivos só recebem pacotes com o mesmo Sync Word. 0x34 é comum para uso privado (LoRa ponto-a-ponto).
+  
 }
 
 
@@ -258,14 +278,16 @@ void loop()
     state_Sensors = ReadingSensors();
     processaFSM(state_Sensors);
   }
- ReadButtonDisplay();// rotina para verificar se botão wake up foi pressionado, se sim liga o wifi e gera a pagina web para download dos dados
 
+ ReadButtonDisplay();// rotina para verificar se botão wake up foi pressionado, se sim liga o wifi e gera a pagina web para download dos dados
 
  if (Flag_tempo_SalvarDados == true){
   Flag_tempo_SalvarDados = false;
   SalvarDadosEmArquivo();
  }
+  EscutaGateway(packetSize);
 }
+
 
 // *********  Functions   *********
 
@@ -279,6 +301,13 @@ void SalvarDadosEmArquivo(){
          Saidas,
          ReturnHive,   // retorna para a colmeia
          ReturnField;  // retorna para o campo
+
+
+  String Arquivo = "", Arquivo_backup = "";
+
+  Arquivo = "/" + ID_Sensor + "_Dados.csv";
+  Arquivo_backup = "/" + ID_Sensor + "_Backup_Dados.csv";
+
 
 
   esp_task_wdt_reset();   // Alimenta o watchdog
@@ -297,32 +326,34 @@ void SalvarDadosEmArquivo(){
   DadosAtuais += ReadtimeRTC('H'); // Hora
   DadosAtuais +=  ",";
   DadosAtuais += String(EntradasBuffer); // Entradas
-  //DadosAtuais += "988";
   DadosAtuais +=  ",";
   DadosAtuais += String(SaidasBuffer); // Saidas
-  //DadosAtuais += "988";
   DadosAtuais +=  ",";
   Bateria = ReadBattery(); // Tensão da bateria
   DadosAtuais += Bateria; // Tensão da bateria
-  //DadosAtuais += "12.5"; // Bateria
   DadosAtuais +=  ",";
   DadosAtuais +=  Erros;
   DadosAtuais += "\r\n"; // Erros
+  DadosAtuaisLora = DadosAtuais;
+
 
   Serial.println("********************************************");
   Serial.println("Dados:");
   Serial.println(DadosAtuais);
+  Serial.println("Dados:");
+  Serial.println(DadosAtuaisLora);
   Serial.println("********************************************");
-  
-  if(!FileExiste(LittleFS, "/Dados.csv"))  // Se o arquivo Não existir, cria o arquivo e imprime o cabeçalho
+
+
+  if(!FileExiste(LittleFS, Arquivo.c_str()))  // Se o arquivo Não existir, cria o arquivo e imprime o cabeçalho
   { 
     //writeFile(LittleFS, "/Dados.csv", "Data (TimeStamp), Entradas, Saidas, Bateria (Volts), Falhas\r\n");
-    writeFile(LittleFS, "/Dados.csv", "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
-    appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str()); //Append some text to the previous file
+    writeFile(LittleFS, Arquivo.c_str(), "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
+    appendFile(LittleFS, Arquivo.c_str(), DadosAtuais.c_str()); //Append some text to the previous file
     DeleteDadosAtuais();
   }else{
   
-    TamanhoArquivo = sizeFile(LittleFS, "/Dados.csv");
+    TamanhoArquivo = sizeFile(LittleFS, Arquivo.c_str());
 
     if(TamanhoArquivo > TamanhoMaximoArquivo){ // Se o arquivo Dados for maior que 1MB, cria um backup e apaga o antigo backup
      
@@ -330,19 +361,19 @@ void SalvarDadosEmArquivo(){
       Serial.print(TamanhoArquivo);
       Serial.print(" kBytes\n");
 
-      if(!FileExiste(LittleFS, "/Backup_Dados.csv")){ // Se o backup não existir, o arquivo dados será transformado em backup
+      if(!FileExiste(LittleFS, Arquivo_backup.c_str())){ // Se o backup não existir, o arquivo dados será transformado em backup
       
-        renameFile(LittleFS, "/Dados.csv", "/Backup_Dados.csv"); 
+        renameFile(LittleFS, Arquivo.c_str(), Arquivo_backup.c_str()); 
         //writeFile(LittleFS, "/Dados.csv", "Data (TimeStamp), Entradas, Saidas, Bateria (Volts), Falhas \r\n");
-        writeFile(LittleFS, "/Dados.csv", "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
-        appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
+        writeFile(LittleFS, Arquivo.c_str(), "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
+        appendFile(LittleFS, Arquivo.c_str(), DadosAtuais.c_str());
         DeleteDadosAtuais();
       }else{ // Se o backup existir, o backup antigo será deletado e o arquivo dados será transformado em backup
       
-        deleteFile(LittleFS, "/Backup_Dados.csv");
-        renameFile(LittleFS, "/Dados.csv", "/Backup_Dados.csv"); // Se o arquivo ficar maior que 1Mbyte será criado um backup (evitar ficar manipulando arquivos muito grandes)
-        writeFile(LittleFS, "/Dados.csv", "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
-        appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
+        deleteFile(LittleFS, Arquivo_backup.c_str());
+        renameFile(LittleFS, Arquivo.c_str(), Arquivo_backup.c_str()); // Se o arquivo ficar maior que 1Mbyte será criado um backup (evitar ficar manipulando arquivos muito grandes)
+        writeFile(LittleFS, Arquivo.c_str(), "Data (DD/MM/YY),Hora (hh:mm:ss),Entradas,Saidas,Bateria (Volts),Falhas\r\n");
+        appendFile(LittleFS, Arquivo.c_str(), DadosAtuais.c_str());
         DeleteDadosAtuais();
       }
 
@@ -350,13 +381,20 @@ void SalvarDadosEmArquivo(){
       Serial.print("\nO arquivo Dados é Menor que ");Serial.print(TamanhoMaximoArquivo);Serial.print(" kByte \n Tamanho Arquivo Dados: ");
       Serial.print(TamanhoArquivo);
       Serial.print(" kBytes\n");
-      appendFile(LittleFS, "/Dados.csv", DadosAtuais.c_str());
+      appendFile(LittleFS, Arquivo.c_str(), DadosAtuais.c_str());
       DeleteDadosAtuais();
 
       Serial.println(LittleFS.totalBytes()); // Total de Bytes na partição LittleFS
       Serial.println(LittleFS.usedBytes());  // Total de Bytes usados
     }
   }
+
+
+
+
+
+
+
 }
 
 void DeleteDadosAtuais(){
